@@ -16,10 +16,17 @@
 #define GPIO_MODEM_TURN_ON_PORT GPIOA
 #define GPIO_MODEM_TURN_ON_PIN GPIO_Pin_5
 
+#define MODEM_USART USART1
+#define MODEM_GPIO_AF_USART GPIO_AF_USART1
+
 static void init_TIM2(void);
-static void init_LEDS(void);
+
+static void led_init(void);
+static void led_green_turn(bool on);
+static void led_blue_turn(bool on);
 
 static void modem_init_USART(void);
+static void modem_USART_set_baud_rate(uint32_t br);
 static void modem_turn(bool on);
 static void modem_write_cmd(const char *cmd);
 
@@ -27,32 +34,63 @@ static inline uint8_t modem_read_byte(uint32_t timeout);
 static uint32_t modem_read_str(char *buff, uint32_t buff_size);
 
 #define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
-//#define MODEM_PB_DONE_STR "\r\n01234\r\n"
+#define MODEM_OK_STR "\r\nOK\r\n"
+#define MODEM_ERROR_STR "\r\nERROR\r\n"
 
 int main(void) {
   char buff[128] = {0};
   int rr;
-  init_LEDS();
-  init_TIM2();
+  led_init();
+//  init_TIM2();
 
   modem_init_USART();
   modem_turn(true);
+
+  led_green_turn(false);
+  led_blue_turn(false);
 
   do {
     rr = modem_read_str(buff, sizeof (buff));
     if (!rr)
       continue;
   } while (strcmp(MODEM_PB_DONE_STR, buff));
-  GPIO_SetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
 
   // init modem. set baud rate and CTS/RTS
+  // 0. Set echo off
+  modem_write_cmd("ATE0\r");
+  rr = modem_read_str(buff, sizeof (buff));
+  if (strcmp("ATE0\r\r\nOK\r\n", buff)) {
+    led_green_turn(false);
+  }
+
+  led_green_turn(true);
+
+  // 1. Set CTS/RTS (cts at least).
+  modem_write_cmd("AT+IFC=2,2\r");
+  rr = modem_read_str(buff, sizeof (buff));
+  if (strcmp(MODEM_OK_STR, buff)) {
+    led_green_turn(false);
+  }
+
+  // 2. Set modem baud/rate temporary
+  modem_write_cmd("AT+IPR=4000000\r");
+  rr = modem_read_str(buff, sizeof (buff));
+  if (strcmp(MODEM_OK_STR, buff)) {
+    led_green_turn(false);
+  }
+
+  modem_USART_set_baud_rate(4000000);
+  USART_Cmd(MODEM_USART, ENABLE); //turn on modem usart
+
+  // 3. Check that we can communicate
+  modem_write_cmd("AT\r");
+  rr = modem_read_str(buff, sizeof (buff));
+  if (strcmp(MODEM_OK_STR, buff)) {
+    led_blue_turn(false);
+  }
+  led_blue_turn(true);
 
   while(1) {
-//    rr = modem_read_str(buff, sizeof(buff));
-//    if (!rr)
-//      continue;
-//    buff[rr] = 0;
-//    modem_write_cmd(buff);
   }
   return 0;
 }
@@ -60,9 +98,9 @@ int main(void) {
 
 uint8_t modem_read_byte(uint32_t timeout) {
   (void)timeout; //todo use this!!
-  while (!(USART1->SR & USART_SR_RXNE))
+  while (!(MODEM_USART->SR & USART_SR_RXNE))
     ;
-  return (uint8_t) (USART1->DR & 0x00ff);
+  return (uint8_t) (MODEM_USART->DR & 0x00ff);
 }
 ///////////////////////////////////////////////////////
 
@@ -70,13 +108,14 @@ uint8_t modem_read_byte(uint32_t timeout) {
 uint32_t modem_read_str(char *buff,
                         uint32_t buff_size) {
   uint32_t rn;
+  bool cr = false;
   for (rn = 0; rn < buff_size; ++rn) {
     buff[rn] = modem_read_byte(200);
     if (buff[rn] != '\n')
       continue;
-    if (rn <= 1)
-      continue;
-    break;
+    if (cr)
+      break;
+    cr = true;
   }
   buff[++rn] = 0;
   return rn;
@@ -85,9 +124,9 @@ uint32_t modem_read_str(char *buff,
 
 void modem_write_cmd(const char *cmd) {
   for (; *cmd; ++cmd) {
-    while(!(USART1->SR & USART_SR_TXE))
+    while(!(MODEM_USART->SR & USART_SR_TXE))
       ;
-    USART1->DR = *cmd;
+    MODEM_USART->DR = *cmd;
   }
 }
 ///////////////////////////////////////////////////////
@@ -98,6 +137,22 @@ void modem_turn(bool on) {
     return;
   }
   GPIO_SetBits(GPIO_MODEM_TURN_ON_PORT, GPIO_MODEM_TURN_ON_PIN);
+}
+///////////////////////////////////////////////////////
+
+void modem_USART_set_baud_rate(uint32_t br) {
+  USART_InitTypeDef ucfg;
+  USART_Cmd(MODEM_USART, DISABLE); //turn off modem
+  USART_DeInit(MODEM_USART); //set default values to all registers
+  //then init
+  ucfg.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
+  ucfg.USART_Parity = USART_Parity_No;
+  ucfg.USART_BaudRate = br;
+  ucfg.USART_StopBits = 1;
+  ucfg.USART_WordLength = USART_WordLength_8b;
+  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS;
+  USART_OverSampling8Cmd(MODEM_USART, ENABLE);
+  USART_Init(MODEM_USART, &ucfg);
 }
 ///////////////////////////////////////////////////////
 
@@ -118,10 +173,10 @@ void modem_init_USART(void) {
   GPIO_Init(GPIOA, &ioCfg);
 
   //set AF to GPIOA
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, GPIO_AF_USART1);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_USART1);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_USART1);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, GPIO_AF_USART1);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, MODEM_GPIO_AF_USART);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, MODEM_GPIO_AF_USART);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, MODEM_GPIO_AF_USART);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, MODEM_GPIO_AF_USART);
 
 //  with this doesn't work. WHY?
 //  GPIO_InitTypeDef ioCfgTurn;
@@ -132,19 +187,8 @@ void modem_init_USART(void) {
 
   //  config usart
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
-  USART_InitTypeDef ucfg;
-  ucfg.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
-  ucfg.USART_Parity = USART_Parity_No;
-  ucfg.USART_BaudRate = 115200; // init baudrate
-//  ucfg.USART_BaudRate = 4000000;
-  ucfg.USART_StopBits = 1;
-  ucfg.USART_WordLength = USART_WordLength_8b;
-  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS;
-  USART_OverSampling8Cmd(USART1, ENABLE);
-  USART_Init(USART1, &ucfg);
-
-// todo enable interrupt if necessary
-  USART_Cmd(USART1, ENABLE);
+  modem_USART_set_baud_rate(115200); // init baud rate is 115200
+  USART_Cmd(MODEM_USART, ENABLE);
 }
 ///////////////////////////////////////////////////////
 
@@ -152,16 +196,30 @@ void TIM2_IRQHandler(void) {
   static bool on = true;
   if (TIM2->SR & TIM_IT_Update) {
     TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-    if ((on = !on)) {
-      GPIO_SetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
-    } else {
-      GPIO_ResetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
-    }
+    led_blue_turn(on = !on);
   }
 }
 ///////////////////////////////////////////////////////
 
-void init_LEDS(void) {
+void led_green_turn(bool on) {
+  if (on) {
+    GPIO_SetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
+    return;
+  }
+  GPIO_ResetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
+}
+///////////////////////////////////////////////////////
+
+void led_blue_turn(bool on) {
+  if (on) {
+    GPIO_SetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
+    return;
+  }
+  GPIO_ResetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
+}
+///////////////////////////////////////////////////////
+
+void led_init(void) {
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
   GPIO_InitTypeDef cfg = {
     .GPIO_Pin = GPIO_BLUE_LED_PIN | GPIO_GREEN_LED_PIN,
