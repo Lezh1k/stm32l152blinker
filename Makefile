@@ -20,7 +20,7 @@ WARN_LEVEL = -Wall -pedantic
 PRG = blinker
 MMCU = -mcpu=cortex-m3 -mthumb -mfloat-abi=soft 
 INCLUDES = -Iinc -I$(CMSIS_DIR)/inc -I$(CMSIS_DIR)/device -I$(STD_PERIPH_DRIVER_DIR)/inc
-CFLAGS := $(INCLUDES) $(MMCU) $(DEFS) $(WARN_LEVEL) -fmessage-length=0 -ffunction-sections -MMD -MP
+CFLAGS := $(INCLUDES) $(MMCU) $(DEFS) $(WARN_LEVEL) -O0 -g3 -fmessage-length=0 -ffunction-sections -MMD -MP
 
 debug: CFLAGS += -O0 -g3
 debug: all
@@ -72,4 +72,4 @@ mrproper:
 	@rm -rf $(BIN_DIR)
 
 program:
-	@st-flash write $(BIN_DIR)/$(PRG).bin 0x8000000
+	@st-flash write $(BIN_DIR)/$(PRG).bin 0x08000000

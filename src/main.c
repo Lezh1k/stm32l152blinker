@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stddef.h>
 #include "stm32l1xx.h"
 #include "stm32l1xx_gpio.h"
 #include "stm32l1xx_rcc.h"
@@ -12,95 +13,104 @@
 #define GPIO_GREEN_LED_PIN GPIO_Pin_7
 #define GPIO_LED_PORT GPIOB
 
-#define MODEM_USART USART2
+#define GPIO_MODEM_TURN_ON_PORT GPIOA
+#define GPIO_MODEM_TURN_ON_PIN GPIO_Pin_5
 
-static void initTIM2(void);
-static void initLEDS(void);
+static void init_TIM2(void);
+static void init_LEDS(void);
 
-static void modem_initUSART(void);
-static void modem_writeCommand(const char *cmd);
+static void modem_init_USART(void);
+static void modem_turn(bool on);
+static void modem_write_cmd(const char *cmd);
 
-static inline uint8_t modem_readByte(uint32_t timeout);
-static int modem_readStr(uint8_t *buff, uint32_t buffSize);
+static inline uint8_t modem_read_byte(uint32_t timeout);
+static uint32_t modem_read_str(char *buff, uint32_t buff_size);
+
+#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
+//#define MODEM_PB_DONE_STR "\r\n01234\r\n"
 
 int main(void) {
   char buff[128] = {0};
   int rr;
-  initLEDS();
-  initTIM2();
-  modem_initUSART();
+  init_LEDS();
+  init_TIM2();
 
-  modem_writeCommand("ATE0\r");
-  rr = modem_readStr((uint8_t*)buff, sizeof (buff));
+  modem_init_USART();
+  modem_turn(true);
+
+  do {
+    rr = modem_read_str(buff, sizeof (buff));
+    if (!rr)
+      continue;
+  } while (strcmp(MODEM_PB_DONE_STR, buff));
+  GPIO_SetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
+
+  // init modem. set baud rate and CTS/RTS
+
   while(1) {
-    modem_writeCommand("AT\r");
-    rr = modem_readStr((uint8_t*)buff, sizeof (buff));
-
-    modem_writeCommand("AT+IPR?\r");
-    rr = modem_readStr((uint8_t*)buff, sizeof (buff));
-
-    modem_writeCommand("AT+IPR=?\r");
-    rr = modem_readStr((uint8_t*)buff, sizeof (buff));
+//    rr = modem_read_str(buff, sizeof(buff));
+//    if (!rr)
+//      continue;
+//    buff[rr] = 0;
+//    modem_write_cmd(buff);
   }
   return 0;
 }
 ///////////////////////////////////////////////////////
 
-uint8_t modem_readByte(uint32_t timeout) {
+uint8_t modem_read_byte(uint32_t timeout) {
   (void)timeout; //todo use this!!
-  while (!(MODEM_USART->SR & USART_SR_RXNE))
-    ; //nop()
-  return (uint8_t) (MODEM_USART->DR & 0x00ff);
+  while (!(USART1->SR & USART_SR_RXNE))
+    ;
+  return (uint8_t) (USART1->DR & 0x00ff);
 }
 ///////////////////////////////////////////////////////
 
 //modem response has this format : <cr><lf>response<cr><lf>
-int modem_readStr(uint8_t *buff,
-                  uint32_t buffSize) {
-  //primitive check that we got something that we can use
-  uint8_t c = modem_readByte(200);
-  if (c != '\r')
-    return -1;
-  c = modem_readByte(200);
-  if (c != '\n')
-    return -2;
-
-  uint8_t *b = buff;
-  for (; buffSize-- > 0; ++b) {
-    *b = modem_readByte(200);
-    if (*b == '\n')
-      break;
+uint32_t modem_read_str(char *buff,
+                        uint32_t buff_size) {
+  uint32_t rn;
+  for (rn = 0; rn < buff_size; ++rn) {
+    buff[rn] = modem_read_byte(200);
+    if (buff[rn] != '\n')
+      continue;
+    if (rn <= 1)
+      continue;
+    break;
   }
-  *b++ = 0;
-  //todo check buff size and timeouts.
-  return 0;
+  buff[++rn] = 0;
+  return rn;
 }
 ///////////////////////////////////////////////////////
 
-void modem_writeCommand(const char *cmd) {
+void modem_write_cmd(const char *cmd) {
   for (; *cmd; ++cmd) {
-    while(!(MODEM_USART->SR & USART_SR_TXE))
+    while(!(USART1->SR & USART_SR_TXE))
       ;
-    MODEM_USART->DR = *cmd;
+    USART1->DR = *cmd;
   }
 }
 ///////////////////////////////////////////////////////
 
-void USART2_IRQHandler(void) {
-  GPIO_LED_PORT->BSRRL |= GPIO_GREEN_LED_PIN;
+void modem_turn(bool on) {
+  if (on) {
+    GPIO_ResetBits(GPIO_MODEM_TURN_ON_PORT, GPIO_MODEM_TURN_ON_PIN);
+    return;
+  }
+  GPIO_SetBits(GPIO_MODEM_TURN_ON_PORT, GPIO_MODEM_TURN_ON_PIN);
 }
 ///////////////////////////////////////////////////////
 
-void modem_initUSART(void) {
-  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+void modem_init_USART(void) {
   //config GPIO
-  //USART2:
-  //cts --> PA0
-  //rts --> PA1
-  //tx --> PA2
-  //rx --> PA3
+  //USART1:
+  //rts --> PA12
+  //cts --> PA11
+  //rx --> PA10
+  //tx --> PA9
+  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
   GPIO_InitTypeDef ioCfg;
-  ioCfg.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3;
+  ioCfg.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_11 | GPIO_Pin_10 | GPIO_Pin_9;
   ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_PP;
@@ -108,37 +118,33 @@ void modem_initUSART(void) {
   GPIO_Init(GPIOA, &ioCfg);
 
   //set AF to GPIOA
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource0, GPIO_AF_USART2);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource1, GPIO_AF_USART2);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource2, GPIO_AF_USART2);
-  GPIO_PinAFConfig(GPIOA, GPIO_PinSource3, GPIO_AF_USART2);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, GPIO_AF_USART1);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_USART1);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_USART1);
+  GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, GPIO_AF_USART1);
+
+//  with this doesn't work. WHY?
+//  GPIO_InitTypeDef ioCfgTurn;
+//  ioCfg.GPIO_Pin = GPIO_MODEM_TURN_ON_PIN;
+//  ioCfg.GPIO_Mode = GPIO_Mode_OUT;
+//  ioCfg.GPIO_Speed = GPIO_Speed_2MHz;
+//  GPIO_Init(GPIO_MODEM_TURN_ON_PORT, &ioCfgTurn);
 
   //  config usart
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
   USART_InitTypeDef ucfg;
   ucfg.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
   ucfg.USART_Parity = USART_Parity_No;
-  ucfg.USART_BaudRate = 115200;
+  ucfg.USART_BaudRate = 115200; // init baudrate
+//  ucfg.USART_BaudRate = 4000000;
   ucfg.USART_StopBits = 1;
   ucfg.USART_WordLength = USART_WordLength_8b;
-  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
-  USART_OverSampling8Cmd(MODEM_USART, ENABLE);
-  USART_Init(MODEM_USART, &ucfg);
+  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS;
+  USART_OverSampling8Cmd(USART1, ENABLE);
+  USART_Init(USART1, &ucfg);
 
-  // enable interrupt
-  NVIC_InitTypeDef ncfg = {
-    .NVIC_IRQChannel = USART2_IRQn,
-    .NVIC_IRQChannelPreemptionPriority = 1,
-    .NVIC_IRQChannelSubPriority = 0,
-    .NVIC_IRQChannelCmd = ENABLE
-  };
-  NVIC_Init(&ncfg);
-
-  USART_ITConfig(MODEM_USART, USART_IT_ORE_RX, ENABLE);
-
-  //enable usart
-  USART_Cmd(MODEM_USART, ENABLE);
+// todo enable interrupt if necessary
+  USART_Cmd(USART1, ENABLE);
 }
 ///////////////////////////////////////////////////////
 
@@ -146,14 +152,16 @@ void TIM2_IRQHandler(void) {
   static bool on = true;
   if (TIM2->SR & TIM_IT_Update) {
     TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-    //if (on) led_on() else led_off()
-    volatile uint16_t *reg = (on = !on) ? &GPIO_LED_PORT->BSRRL : &GPIO_LED_PORT->BSRRH;
-    *reg |= GPIO_BLUE_LED_PIN;
+    if ((on = !on)) {
+      GPIO_SetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
+    } else {
+      GPIO_ResetBits(GPIO_LED_PORT, GPIO_BLUE_LED_PIN);
+    }
   }
 }
 ///////////////////////////////////////////////////////
 
-void initLEDS(void) {
+void init_LEDS(void) {
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
   GPIO_InitTypeDef cfg = {
     .GPIO_Pin = GPIO_BLUE_LED_PIN | GPIO_GREEN_LED_PIN,
@@ -164,7 +172,7 @@ void initLEDS(void) {
 }
 ///////////////////////////////////////////////////////
 
-void initTIM2(void) {
+void init_TIM2(void) {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
   TIM_TimeBaseInitTypeDef tcfg = {
     .TIM_ClockDivision = TIM_CKD_DIV1, //32 000 000

@@ -16,6 +16,7 @@ INCLUDEPATH += \
     StdPeriph_Driver/inc
 
 DISTFILES += \
+    Makefile \
     startup/stm32l152rctx.s \
     stm32l152rctx.ld
 
