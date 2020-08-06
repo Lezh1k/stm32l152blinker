@@ -59,7 +59,8 @@ HEADERS += \
     StdPeriph_Driver/inc/stm32l1xx_syscfg.h \
     StdPeriph_Driver/inc/stm32l1xx_tim.h \
     StdPeriph_Driver/inc/stm32l1xx_usart.h \
-    StdPeriph_Driver/inc/stm32l1xx_wwdg.h
+    StdPeriph_Driver/inc/stm32l1xx_wwdg.h \
+    inc/modem.h
 
 SOURCES += \
     StdPeriph_Driver/src/misc.c \
@@ -90,5 +91,6 @@ SOURCES += \
     StdPeriph_Driver/src/stm32l1xx_usart.c \
     StdPeriph_Driver/src/stm32l1xx_wwdg.c \
     src/main.c \
+    src/modem.c \
     src/system_stm32l1xx.c
 
