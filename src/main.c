@@ -18,6 +18,7 @@ static void init_TIM2(void);
 static void led_init(void);
 static void led_green_turn(bool on);
 static void led_blue_turn(bool on);
+static char modem_buff[0xff];
 
 int main(void) {
   char buff[128] = {0};
@@ -81,14 +82,11 @@ int main(void) {
   led_green_turn(false);
   led_blue_turn(true);
 
-//  init_TIM2();
-//  while(1) {
-//    ; //do nothing
-//  }
+  init_TIM2();
   ///////////////////////////////////////////////////////
   // let's start test! :)
 
-  // 0. set data mode
+  // 0. set tcp data mode
   modem_write_cmd("AT+CIPMODE=1\r");
   rr = modem_read_str(buff, sizeof (buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CIPMODE=1\r");
@@ -128,9 +126,27 @@ int main(void) {
   modem_write_cmd("9090"); //port
   modem_write_cmd("\r"); // end of cmd
   rr = modem_read_str(buff, sizeof (buff));
+  mpr = modem_parse_cmd_answer(buff, "AT+CIPOPEN=0,\"TCP\",\"77.95.61.25\",9090\r");
   if (mpr.code != MODEM_SUCCESS) {
     led_blue_turn(false);
   }
+  if (strcmp("\r\nCONNECT 4000000\r\n", mpr.str_answer)) {
+    led_blue_turn(false);
+  }
+
+  static char alphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for (size_t i = 0; i < sizeof (modem_buff); ++i) {
+    modem_buff[i] = alphabet[i % (sizeof (alphabet)-1)];
+  }
+
+  modem_buff[sizeof (modem_buff) - 1] = 0;
+  for (int i = 0; i < 2*1024; ++i) {
+    modem_write_cmd(modem_buff);
+  }
+
+  modem_write_cmd("\r");
+  led_blue_turn(false);
+  //todo close connection and go to sleep mode
 
   while(1) {
   }
@@ -140,19 +156,10 @@ int main(void) {
 
 void TIM2_IRQHandler(void) {
   static bool on = true;
-  static char buff[128]={0};
   modem_parse_cmd_res_t r;
   if (TIM2->SR & TIM_IT_Update) {
-    TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-    modem_write_cmd("AT\r");
-    modem_read_str(buff, sizeof (buff));
-    r = modem_parse_cmd_answer(buff, "AT\r");
-    if (r.code == MODEM_SUCCESS)
-      led_blue_turn(true);
-    else
-      led_blue_turn(false);
+    TIM_ClearITPendingBit(TIM2, TIM_IT_Update);    
     led_green_turn(on = !on);
-
   }
 }
 ///////////////////////////////////////////////////////
