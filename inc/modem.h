@@ -29,6 +29,10 @@ modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
                                              const char *cmd); //todo make private
 
 uint8_t modem_read_byte(uint32_t timeout); //todo make private
-uint32_t modem_read_str(char *buff, uint32_t buff_size);
+uint32_t modem_read_str(char *buff,
+                        uint32_t buff_size);
+uint32_t modem_read_str_timeout(char *buff,
+                                uint32_t buff_size,
+                                uint32_t timeout_between_symbols_ticks);
 
 #endif // MODEM_H

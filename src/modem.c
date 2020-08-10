@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include "stm32l1xx.h"
 #include "stm32l1xx_gpio.h"
 #include "stm32l1xx_usart.h"
@@ -26,28 +27,49 @@ modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
 ///////////////////////////////////////////////////////
 
 uint8_t modem_read_byte(uint32_t timeout) {
-  (void)timeout; //todo use this!!
-  while (!(MODEM_USART->SR & USART_SR_RXNE))
+  if (timeout == 0) { //wait infinity
+    while (!(MODEM_USART->SR & USART_SR_RXNE))
+      ;
+    return (uint8_t) (MODEM_USART->DR & 0x00ff);
+  }
+
+  while (!(MODEM_USART->SR & USART_SR_RXNE) && --timeout)
     ;
-  return (uint8_t) (MODEM_USART->DR & 0x00ff);
+  return timeout ? (uint8_t) (MODEM_USART->DR & 0x00ff) : 0;
+}
+///////////////////////////////////////////////////////
+
+//modem response has this format : <cr><lf>response<cr><lf>
+uint32_t
+modem_read_str_timeout(char *buff,
+                       uint32_t buff_size,
+                       uint32_t timeout_between_symbols_ticks) {
+  char ch;
+  char *tb = buff;
+  bool cr = false;
+  uint32_t rn;
+
+  for (rn = 0; rn < buff_size; ++rn) {
+    ch = modem_read_byte(timeout_between_symbols_ticks);
+    if (!ch)
+      continue;
+    *tb++ = ch;
+    if (ch != '\n')
+      continue;
+    if (cr)
+      break;
+    cr = true;
+  }
+
+  *tb++ = 0;
+  return (uint32_t)((ptrdiff_t)(tb-buff));
 }
 ///////////////////////////////////////////////////////
 
 //modem response has this format : <cr><lf>response<cr><lf>
 uint32_t modem_read_str(char *buff,
                         uint32_t buff_size) {
-  uint32_t rn;
-  bool cr = false;
-  for (rn = 0; rn < buff_size; ++rn) {
-    buff[rn] = modem_read_byte(200);
-    if (buff[rn] != '\n')
-      continue;
-    if (cr)
-      break;
-    cr = true;
-  }
-  buff[++rn] = 0;
-  return rn;
+  return modem_read_str_timeout(buff, buff_size, 0);
 }
 ///////////////////////////////////////////////////////
 
@@ -71,7 +93,7 @@ void modem_turn(bool on) {
 
 void modem_USART_change_baud_rate(uint32_t br) {
   USART_InitTypeDef ucfg;
-  USART_Cmd(MODEM_USART, DISABLE); //turn off usart
+//  USART_Cmd(MODEM_USART, DISABLE); //turn off usart
   USART_DeInit(MODEM_USART); //set default values to all registers
   //then init
   ucfg.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
@@ -79,7 +101,7 @@ void modem_USART_change_baud_rate(uint32_t br) {
   ucfg.USART_BaudRate = br;
   ucfg.USART_StopBits = 1;
   ucfg.USART_WordLength = USART_WordLength_8b;
-  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS;
+  ucfg.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
   USART_OverSampling8Cmd(MODEM_USART, ENABLE);
   USART_Init(MODEM_USART, &ucfg);
   USART_Cmd(MODEM_USART, ENABLE); //turn on modem usart
@@ -95,18 +117,25 @@ void modem_init_USART(void) {
   //tx --> PA9
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
   GPIO_InitTypeDef ioCfg;
-  ioCfg.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_11 | GPIO_Pin_9;
+  ioCfg.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_9; //rts and tx pull up
   ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_PP;
   ioCfg.GPIO_PuPd = GPIO_PuPd_UP;
   GPIO_Init(GPIOA, &ioCfg);
 
-  ioCfg.GPIO_Pin = GPIO_Pin_10;
-  ioCfg.GPIO_Mode = GPIO_Mode_AF; //IN?
+  ioCfg.GPIO_Pin = GPIO_Pin_10; //rx to floating
+  ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_OD;
   ioCfg.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  GPIO_Init(GPIOA, &ioCfg);
+
+  ioCfg.GPIO_Pin = GPIO_Pin_11; //cts pull down
+  ioCfg.GPIO_Mode = GPIO_Mode_AF;
+  ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
+  ioCfg.GPIO_OType = GPIO_OType_OD;
+  ioCfg.GPIO_PuPd = GPIO_PuPd_DOWN;
   GPIO_Init(GPIOA, &ioCfg);
 
   //set AF to GPIOA

@@ -45,8 +45,7 @@ int main(void) {
   // 1. Set CTS/RTS (cts at least).
   modem_write_cmd("AT+IFC=2,2\r");
   rr = modem_read_str(buff, sizeof (buff));
-  mpr = modem_parse_cmd_answer(buff,
-                               "AT+IFC=2,2\r");
+  mpr = modem_parse_cmd_answer(buff, "AT+IFC=2,2\r");
   if (mpr.code != MODEM_SUCCESS) {
     led_green_turn(false);
   }
@@ -57,8 +56,7 @@ int main(void) {
   // 2. Set modem baud/rate temporary
   modem_write_cmd("AT+IPR=4000000\r");
   rr = modem_read_str(buff, sizeof (buff));
-  mpr = modem_parse_cmd_answer(buff,
-                               "AT+IPR=4000000\r");
+  mpr = modem_parse_cmd_answer(buff, "AT+IPR=4000000\r");
   if (mpr.code != MODEM_SUCCESS) {
     led_green_turn(false);
   }
@@ -67,36 +65,33 @@ int main(void) {
   }
 
   modem_USART_change_baud_rate(MODEM_BR_4000000);
-  for (uint32_t i = 0; i < 0x00ffffff; ++i)
-    ;
   led_blue_turn(false);
 
   // 3. Check that we can communicate
-  modem_write_cmd("AT\r");
-  rr = modem_read_str(buff, sizeof (buff));
-  mpr = modem_parse_cmd_answer(buff,
-                               "AT\r");
-
-  if (mpr.code != MODEM_SUCCESS) {
-    led_green_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_green_turn(false);
+  for (;;) { //todo some counter.
+    modem_write_cmd("AT\r");
+    rr = modem_read_str_timeout(buff, sizeof (buff), 1000);
+    mpr = modem_parse_cmd_answer(buff, "AT\r");
+    if (mpr.code == MODEM_SUCCESS &&
+        strcmp(mpr.str_answer, MODEM_OK_STR) == 0) {
+      break;
+    }
   }
 
   led_green_turn(false);
   led_blue_turn(true);
 
-  while(1) {
-  }
+//  init_TIM2();
+//  while(1) {
+//    ; //do nothing
+//  }
   ///////////////////////////////////////////////////////
   // let's start test! :)
 
   // 0. set data mode
   modem_write_cmd("AT+CIPMODE=1\r");
   rr = modem_read_str(buff, sizeof (buff));
-  mpr = modem_parse_cmd_answer(buff,
-                               "AT+CIPMODE=1\r");
+  mpr = modem_parse_cmd_answer(buff, "AT+CIPMODE=1\r");
   if (mpr.code != MODEM_SUCCESS) {
     led_blue_turn(false);
   }
@@ -107,8 +102,7 @@ int main(void) {
   // 1. netopen - open socket
   modem_write_cmd("AT+NETOPEN\r");
   rr = modem_read_str(buff, sizeof (buff));
-  mpr = modem_parse_cmd_answer(buff,
-                               "AT+NETOPEN\r");
+  mpr = modem_parse_cmd_answer(buff, "AT+NETOPEN\r");
   if (mpr.code != MODEM_SUCCESS) {
     led_blue_turn(false);
   }
@@ -121,10 +115,22 @@ int main(void) {
   if (mpr.code != MODEM_SUCCESS) {
     led_blue_turn(false);
   }
-  if (strcmp("\r\n+NETOPEN: 0\r\n", mpr.str_answer)) { //why 0?
+
+  // todo get interface number! 0 here is interface number!!!!
+  if (strcmp("\r\n+NETOPEN: 0\r\n", mpr.str_answer)) {
     led_blue_turn(false);
   }
+
   // 2.
+  modem_write_cmd("AT+CIPOPEN=0,"); //open
+  modem_write_cmd("\"TCP\","); //type of connection : TCP/UDP
+  modem_write_cmd("\"77.95.61.25\","); //server.ip
+  modem_write_cmd("9090"); //port
+  modem_write_cmd("\r"); // end of cmd
+  rr = modem_read_str(buff, sizeof (buff));
+  if (mpr.code != MODEM_SUCCESS) {
+    led_blue_turn(false);
+  }
 
   while(1) {
   }
@@ -134,9 +140,19 @@ int main(void) {
 
 void TIM2_IRQHandler(void) {
   static bool on = true;
+  static char buff[128]={0};
+  modem_parse_cmd_res_t r;
   if (TIM2->SR & TIM_IT_Update) {
     TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-    led_blue_turn(on = !on);
+    modem_write_cmd("AT\r");
+    modem_read_str(buff, sizeof (buff));
+    r = modem_parse_cmd_answer(buff, "AT\r");
+    if (r.code == MODEM_SUCCESS)
+      led_blue_turn(true);
+    else
+      led_blue_turn(false);
+    led_green_turn(on = !on);
+
   }
 }
 ///////////////////////////////////////////////////////
