@@ -24,7 +24,8 @@ typedef struct modem_parse_cmd_res {
 void modem_init_USART(void);
 void modem_USART_change_baud_rate(uint32_t br); //todo make private
 void modem_turn(bool on);
-void modem_write_cmd(const char *cmd); //todo make private
+void modem_write_cmd(const char *cmd);
+void modem_write_data(const char *buff, uint32_t size);
 modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
                                              const char *cmd); //todo make private
 

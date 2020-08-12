@@ -11,6 +11,8 @@
 #define GPIO_MODEM_TURN_ON_PORT GPIOA
 #define GPIO_MODEM_TURN_ON_PIN GPIO_Pin_5
 
+static void modem_write_byte(char b);
+
 modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
                                              const char *cmd) {
   modem_parse_cmd_res_t res;
@@ -73,12 +75,23 @@ uint32_t modem_read_str(char *buff,
 }
 ///////////////////////////////////////////////////////
 
+void modem_write_byte(char b) {
+  while(!(MODEM_USART->SR & USART_SR_TXE))
+    ;
+  MODEM_USART->DR = b;
+}
+///////////////////////////////////////////////////////
+
 void modem_write_cmd(const char *cmd) {
-  for (; *cmd; ++cmd) {
-    while(!(MODEM_USART->SR & USART_SR_TXE))
-      ;
-    MODEM_USART->DR = *cmd;
-  }
+  for (; *cmd; ++cmd)
+    modem_write_byte(*cmd);
+}
+///////////////////////////////////////////////////////
+
+void modem_write_data(const char *buff,
+                      uint32_t size) {
+  while (size--)
+    modem_write_byte(*buff++);
 }
 ///////////////////////////////////////////////////////
 

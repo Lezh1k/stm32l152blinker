@@ -21,9 +21,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 if not data:
                     break
                 total_received += len(data)
-                if data[-1] == 13:
-                    break
             print('total received: {}'.format(total_received))
-            print('time: {}'.format(time.time() - start))
+            dur = time.time() - start
+            print('duration: {}'.format(dur))
+            speed = total_received / dur
+            print('speed: {}'.format(speed))
+        print('try to close conn')
+        conn.close()
+        break
 
 
