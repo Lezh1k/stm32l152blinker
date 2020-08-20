@@ -18,9 +18,7 @@
 
 static void TIM2_init(void);
 static void LED_init(void);
-static void modem_sleep_mode(bool on);
 static void led_blue_turn(bool on);
-static void delay_ms(uint32_t ms);
 
 static volatile bool m_need_to_send_data = false;
 static volatile int16_t m_test_time;
@@ -72,7 +70,7 @@ send_test_data(const char* cmd_buff,
     //but just "\r\n>". SO THIS IS KIND OF HACK HERE
     rr = modem_read_str(buff, 3);
     mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != MODEM_SUCCESS) {
+    if (mpr.code != ME_SUCCESS) {
       led_blue_turn(false);
     }
     if (strcmp("\r\n>", mpr.str_answer)) {
@@ -83,7 +81,7 @@ send_test_data(const char* cmd_buff,
     modem_write_data(modem_data_buff, count);
     rr = modem_read_str(buff, sizeof(buff));
     mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != MODEM_SUCCESS ||
+    if (mpr.code != ME_SUCCESS ||
         strcmp(MODEM_OK_STR, mpr.str_answer)) {
       led_blue_turn(false);
     }
@@ -95,23 +93,16 @@ send_test_data(const char* cmd_buff,
 }
 ///////////////////////////////////////////////////////
 
-int main(void) {
-  char buff[128] = {0};
-  int rr;
-  modem_parse_cmd_res_t mpr; //modem parse res
+int main(void) {  
+  SysTick_Config(SystemCoreClock / 1000); //1 ms tick. see commons.c
   LED_init();
   TIM2_init();
-  SysTick_Config(SystemCoreClock / 1000); //1 ms ?
 
   modem_sleep_mode(false);
   delay_ms(20);
   modem_init_USART();
 
-  do {
-    rr = modem_read_str(buff, sizeof(buff));
-    if (!rr)
-      continue;
-  } while (strcmp(MODEM_PB_DONE_STR, buff));
+
 
   led_blue_turn(true);
   // init modem. set baud rate and CTS/RTS
@@ -119,7 +110,7 @@ int main(void) {
   modem_write_cmd("AT+IFC=2,2\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+IFC=2,2\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -130,7 +121,7 @@ int main(void) {
   modem_write_cmd("AT+CSUART=0\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CSUART=0\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -141,7 +132,7 @@ int main(void) {
   modem_write_cmd("AT+CSCLK=1\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CSCLK=1\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -152,7 +143,7 @@ int main(void) {
   modem_write_cmd("AT&D1\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT&D1\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -163,7 +154,7 @@ int main(void) {
   modem_write_cmd("AT+IPR=4000000\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+IPR=4000000\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -178,7 +169,7 @@ int main(void) {
     modem_write_cmd("AT\r");
     rr = modem_read_str_timeout(buff, sizeof(buff), 1000);
     mpr = modem_parse_cmd_answer(buff, "AT\r");
-    if (mpr.code == MODEM_SUCCESS &&
+    if (mpr.code == ME_SUCCESS &&
         strcmp(mpr.str_answer, MODEM_OK_STR) == 0) {
       break;
     }
@@ -192,7 +183,7 @@ int main(void) {
   modem_write_cmd("AT+CIPTIMEOUT=10000,10000,10000\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CIPTIMEOUT=10000,10000,10000\r");
-  if (mpr.code != MODEM_SUCCESS ||
+  if (mpr.code != ME_SUCCESS ||
       strcmp(mpr.str_answer, MODEM_OK_STR)) {
     led_blue_turn(false);
   }
@@ -201,14 +192,14 @@ int main(void) {
   modem_write_cmd("AT+NETOPEN\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+NETOPEN\r");
-  if (mpr.code != MODEM_SUCCESS ||
+  if (mpr.code != ME_SUCCESS ||
       strcmp(mpr.str_answer, MODEM_OK_STR)) {
     led_blue_turn(false);
   }
 
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != MODEM_SUCCESS ) {
+  if (mpr.code != ME_SUCCESS ) {
     led_blue_turn(false);
   }
   // todo get interface number! 0 here is interface number!!!!
@@ -224,14 +215,14 @@ int main(void) {
   modem_write_cmd("\r"); // end of cmd
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CIPOPEN=0,\"TCP\",\"212.42.115.163\",9094\r");
-  if (mpr.code != MODEM_SUCCESS ||
+  if (mpr.code != ME_SUCCESS ||
       strcmp(MODEM_OK_STR, mpr.str_answer)) {
     led_blue_turn(false);
   }
 
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != MODEM_SUCCESS ) {
+  if (mpr.code != ME_SUCCESS ) {
     led_blue_turn(false);
   }
   if (strcmp("\r\n+CIPOPEN: 0,0\r\n", mpr.str_answer)) {
@@ -249,7 +240,7 @@ int main(void) {
   modem_write_cmd("ATE0\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "ATE0\r");
-  if (mpr.code != MODEM_SUCCESS ||
+  if (mpr.code != ME_SUCCESS ||
       strcmp(mpr.str_answer, MODEM_OK_STR)) {
     led_blue_turn(false);
   }
@@ -269,14 +260,14 @@ int main(void) {
     modem_write_cmd("\r"); // end of cmd
     rr = modem_read_str(buff, sizeof(buff));
     mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != MODEM_SUCCESS ||
+    if (mpr.code != ME_SUCCESS ||
         strcmp(MODEM_OK_STR, mpr.str_answer)) {
       led_blue_turn(false);
     }
 
     rr = modem_read_str(buff, sizeof(buff));
     mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != MODEM_SUCCESS) {
+    if (mpr.code != ME_SUCCESS) {
       led_blue_turn(false);
     }
     if (strcmp("\r\n+CIPOPEN: 0,0\r\n", mpr.str_answer)) {
@@ -291,7 +282,7 @@ int main(void) {
     modem_write_cmd("AT+CIPCLOSE=0\r");
     rr = modem_read_str(buff, sizeof(buff));
     mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != MODEM_SUCCESS ||
+    if (mpr.code != ME_SUCCESS ||
         strcmp(MODEM_OK_STR, mpr.str_answer)) {
       led_blue_turn(false);
     }
@@ -303,7 +294,7 @@ int main(void) {
   modem_write_cmd("ATE1\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != MODEM_SUCCESS ||
+  if (mpr.code != ME_SUCCESS ||
       strcmp(MODEM_OK_STR, mpr.str_answer)) {
     led_blue_turn(false);
   }
@@ -313,7 +304,7 @@ int main(void) {
   modem_write_cmd("AT+CIPCLOSE=0\r");
   rr = modem_read_str(buff, sizeof(buff));
   mpr = modem_parse_cmd_answer(buff, "AT+CIPCLOSE=0\r");
-  if (mpr.code != MODEM_SUCCESS) {
+  if (mpr.code != ME_SUCCESS) {
     led_blue_turn(false);
   }
   if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
@@ -330,15 +321,6 @@ int main(void) {
 }
 ///////////////////////////////////////////////////////
 
-void
-modem_sleep_mode(bool on) {
-  if (on) {
-    GPIO_SetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
-  } else {
-    GPIO_ResetBits(GPIO_LED_PORT, GPIO_GREEN_LED_PIN);
-  }
-}
-///////////////////////////////////////////////////////
 
 void
 led_blue_turn(bool on) {
@@ -397,19 +379,5 @@ TIM2_init(void) {
 
   NVIC_Init(&nvicCfg);
   TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
-}
-///////////////////////////////////////////////////////
-
-static volatile uint32_t sys_tick_current;
-void delay_ms (uint32_t ms) {
-  uint32_t curr = sys_tick_current;
-  while (sys_tick_current - curr <= ms)
-    ; // do nothing
-}
-///////////////////////////////////////////////////////
-
-void
-SysTick_Handler(void) {
-  ++sys_tick_current;
 }
 ///////////////////////////////////////////////////////
