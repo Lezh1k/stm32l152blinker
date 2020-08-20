@@ -21,15 +21,24 @@ typedef struct modem_parse_cmd_res {
   char *str_answer;
 } modem_parse_cmd_res_t;
 
+typedef struct modem {
+  uint8_t (*pf_read_byte)();
+  void (*pf_write_byte)(char);
+  char *tx_buff; // max 1500 for real device
+  char at_cmd_buff[64];
+  //  char _padding[4]; maybe compiller is smart enough to add padding
+} modem_t;
+
 void modem_init_USART(void);
 void modem_USART_change_baud_rate(uint32_t br); //todo make private
 void modem_turn(bool on);
 void modem_write_cmd(const char *cmd);
-void modem_write_data(const char *buff, uint32_t size);
+void modem_write_data(const char *buff,
+                      uint32_t size);
 modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
                                              const char *cmd); //todo make private
 
-uint8_t modem_read_byte(uint32_t timeout); //todo make private
+
 uint32_t modem_read_str(char *buff,
                         uint32_t buff_size);
 uint32_t modem_read_str_timeout(char *buff,

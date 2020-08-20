@@ -5,7 +5,7 @@ import time
 
 HOST = '0.0.0.0'  # Standard loopback interface address (localhost)
 PORT = 9090  # Port to listen on (non-privileged ports are > 1023)
-BUFF_SIZE = 1024
+BUFF_SIZE = 1500 
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))

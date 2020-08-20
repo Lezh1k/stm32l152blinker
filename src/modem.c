@@ -8,13 +8,15 @@
 #define MODEM_USART USART1
 #define MODEM_GPIO_AF_USART GPIO_AF_USART1
 
-#define GPIO_MODEM_TURN_ON_PORT GPIOA
-#define GPIO_MODEM_TURN_ON_PIN GPIO_Pin_5
+#define MODEM_GPIO_TURN_ON_PORT GPIOA
+#define MODEM_GPIO_TURN_ON_PIN GPIO_Pin_5
 
 static void modem_write_byte(char b);
+static uint8_t modem_read_byte(uint32_t timeout);
 
-modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
-                                             const char *cmd) {
+modem_parse_cmd_res_t
+modem_parse_cmd_answer(const char *buff,
+                       const char *cmd) {
   modem_parse_cmd_res_t res;
   for (; *cmd; ++cmd, ++buff) {
     if (*cmd == *buff)
@@ -28,7 +30,8 @@ modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
 }
 ///////////////////////////////////////////////////////
 
-uint8_t modem_read_byte(uint32_t timeout) {
+uint8_t
+modem_read_byte(uint32_t timeout) {
   if (timeout == 0) { //wait infinity
     while (!(MODEM_USART->SR & USART_SR_RXNE))
       ;
@@ -42,6 +45,8 @@ uint8_t modem_read_byte(uint32_t timeout) {
 ///////////////////////////////////////////////////////
 
 //modem response has this format : <cr><lf>response<cr><lf>
+//but AT+CIPSEND has another response first: \r\n>\0
+//so when this command is in use - need to set buff_size=3
 uint32_t
 modem_read_str_timeout(char *buff,
                        uint32_t buff_size,
@@ -68,45 +73,49 @@ modem_read_str_timeout(char *buff,
 }
 ///////////////////////////////////////////////////////
 
-//modem response has this format : <cr><lf>response<cr><lf>
-uint32_t modem_read_str(char *buff,
-                        uint32_t buff_size) {
+uint32_t
+modem_read_str(char *buff,
+               uint32_t buff_size) {
   return modem_read_str_timeout(buff, buff_size, 0);
 }
 ///////////////////////////////////////////////////////
 
-void modem_write_byte(char b) {
+void
+modem_write_byte(char b) {
   while(!(MODEM_USART->SR & USART_SR_TXE))
     ;
   MODEM_USART->DR = b;
 }
 ///////////////////////////////////////////////////////
 
-void modem_write_cmd(const char *cmd) {
+void
+modem_write_cmd(const char *cmd) {
   for (; *cmd; ++cmd)
     modem_write_byte(*cmd);
 }
 ///////////////////////////////////////////////////////
 
-void modem_write_data(const char *buff,
+void
+modem_write_data(const char *buff,
                       uint32_t size) {
   while (size--)
     modem_write_byte(*buff++);
 }
 ///////////////////////////////////////////////////////
 
-void modem_turn(bool on) {
+void
+modem_turn(bool on) {
   if (on) {
-    GPIO_ResetBits(GPIO_MODEM_TURN_ON_PORT, GPIO_MODEM_TURN_ON_PIN);
+    GPIO_ResetBits(MODEM_GPIO_TURN_ON_PORT, MODEM_GPIO_TURN_ON_PIN);
     return;
   }
-  GPIO_SetBits(GPIO_MODEM_TURN_ON_PORT, GPIO_MODEM_TURN_ON_PIN);
+  GPIO_SetBits(MODEM_GPIO_TURN_ON_PORT, MODEM_GPIO_TURN_ON_PIN);
 }
 ///////////////////////////////////////////////////////
 
-void modem_USART_change_baud_rate(uint32_t br) {
+void
+modem_USART_change_baud_rate(uint32_t br) {
   USART_InitTypeDef ucfg;
-//  USART_Cmd(MODEM_USART, DISABLE); //turn off usart
   USART_DeInit(MODEM_USART); //set default values to all registers
   //then init
   ucfg.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
@@ -121,7 +130,8 @@ void modem_USART_change_baud_rate(uint32_t br) {
 }
 ///////////////////////////////////////////////////////
 
-void modem_init_USART(void) {
+void
+modem_init_USART(void) {
   //config GPIO
   //USART1:
   //rts --> PA12
@@ -130,39 +140,40 @@ void modem_init_USART(void) {
   //tx --> PA9
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
   GPIO_InitTypeDef ioCfg;
-  ioCfg.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_9; //rts and tx pull up
+  ioCfg.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_9; //rts and tx pull up, AF
   ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_PP;
   ioCfg.GPIO_PuPd = GPIO_PuPd_UP;
   GPIO_Init(GPIOA, &ioCfg);
 
-  ioCfg.GPIO_Pin = GPIO_Pin_10; //rx to floating
+  ioCfg.GPIO_Pin = GPIO_Pin_10; //rx to floating, AF
   ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_OD;
   ioCfg.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(GPIOA, &ioCfg);
 
-  ioCfg.GPIO_Pin = GPIO_Pin_11; //cts pull down
+  ioCfg.GPIO_Pin = GPIO_Pin_11; //cts pull down, AF
   ioCfg.GPIO_Mode = GPIO_Mode_AF;
   ioCfg.GPIO_Speed = GPIO_Speed_40MHz;
   ioCfg.GPIO_OType = GPIO_OType_OD;
   ioCfg.GPIO_PuPd = GPIO_PuPd_DOWN;
   GPIO_Init(GPIOA, &ioCfg);
 
+  //  todo uncomment and test
+  //  ioCfg.GPIO_Pin = MODEM_GPIO_TURN_ON_PIN; //pull up, OUT
+  //  ioCfg.GPIO_Mode = GPIO_Mode_OUT;
+  //  ioCfg.GPIO_Speed = GPIO_Speed_2MHz;
+  //  ioCfg.GPIO_OType = GPIO_OType_PP;
+  //  ioCfg.GPIO_PuPd = GPIO_PuPd_UP;
+  //  GPIO_Init(GPIOA, &ioCfg);
+
   //set AF to GPIOA
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, MODEM_GPIO_AF_USART);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, MODEM_GPIO_AF_USART);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, MODEM_GPIO_AF_USART);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, MODEM_GPIO_AF_USART);
-
-  //  with this doesn't work. WHY?
-  //  GPIO_InitTypeDef ioCfgTurn;
-  //  ioCfg.GPIO_Pin = GPIO_MODEM_TURN_ON_PIN;
-  //  ioCfg.GPIO_Mode = GPIO_Mode_OUT;
-  //  ioCfg.GPIO_Speed = GPIO_Speed_2MHz;
-  //  GPIO_Init(GPIO_MODEM_TURN_ON_PORT, &ioCfgTurn);
 
   //  config usart
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);

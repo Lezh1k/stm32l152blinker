@@ -1,6 +1,6 @@
 #include "commons.h"
 
-char *
+char*
 u16_to_str(uint16_t val) {
   static char buff[6] = {0}; //65535 - max val
   char *bv = &buff[5];
