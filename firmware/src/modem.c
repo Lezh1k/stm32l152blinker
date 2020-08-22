@@ -32,18 +32,27 @@
 #define MODEM_USART_RX_PIN_SOURCE GPIO_PinSource10
 #define MODEM_USART_TX_PIN_SOURCE GPIO_PinSource9
 
+#define MODEM_DELAY_AFTER_DTR_CHANGE_MS 20
+
 // TODO CHANGE THIS!
 #define MODEM_DTR_PIN GPIO_Pin_8
 #define MODEM_PWR_ON_PIN GPIO_Pin_7
 
 // private functions
 static void modem_write_byte(char b);
-static uint8_t modem_read_byte(uint16_t timeout);
+static uint8_t modem_read_byte(uint16_t timeout_ms);
 
 static void modem_init_GPIO_and_USART(void);
 static void modem_USART_change_baud_rate(uint32_t br);
-static void modem_set_pwr(bool on);
-static void modem_set_DTR(bool high);
+
+
+static void modem_set_DTR(const modem_t *m, bool high);
+
+
+static uint32_t modem_read_at_str_timeout(modem_t *m,
+                                          uint16_t max_len,
+                                          uint32_t timeout_ms);
+
 static uint32_t modem_read_at_str(modem_t *m,
                                   uint16_t max_len);
 
@@ -101,16 +110,19 @@ modem_parse_cmd_answer(const char *buff,
 ///////////////////////////////////////////////////////
 
 uint8_t
-modem_read_byte(uint16_t timeout) {
-  if (timeout == 0) { //wait infinity
+modem_read_byte(uint16_t timeout_ms) {
+  if (timeout_ms == 0) { //wait infinity
     while (!(MODEM_USART->SR & USART_SR_RXNE))
       ;
     return (uint8_t) (MODEM_USART->DR & 0x00ff);
   }
+  uint32_t start = get_tick();
+  volatile bool is_time_out = false;
 
-  while (!(MODEM_USART->SR & USART_SR_RXNE) && --timeout)
-    ;
-  return timeout ? (uint8_t) (MODEM_USART->DR & 0x00ff) : 0;
+  while (!(MODEM_USART->SR & USART_SR_RXNE) && !is_time_out) {
+    is_time_out = get_tick() - start > timeout_ms;
+  }
+  return is_time_out ? 0 : (uint8_t) (MODEM_USART->DR & 0x00ff);
 }
 ///////////////////////////////////////////////////////
 
@@ -120,12 +132,13 @@ modem_read_byte(uint16_t timeout) {
 uint32_t
 modem_read_at_str_timeout(modem_t *m,
                           uint16_t max_len,
-                          uint32_t ticks_count) {
-  char ch;
-  char *tb = m->at_cmd_buff;
+                          uint32_t timeout_ms) {
+  char ch, *tb;
   bool cr = false;
+
+  tb = m->at_cmd_buff;
   while (max_len--) {
-    ch = m->fn_read_byte(ticks_count);
+    ch = m->fn_read_byte(timeout_ms);
     if (!ch)
       continue;
     *tb++ = ch;
@@ -181,12 +194,13 @@ modem_set_pwr(bool on) {
 ///////////////////////////////////////////////////////
 
 void
-modem_set_DTR(bool high) {
+modem_set_DTR(const modem_t *m,
+              bool high) {
   if (high) {
     GPIO_SetBits(MODEM_USART_PORT, MODEM_DTR_PIN);
   } else {
     GPIO_ResetBits(MODEM_USART_PORT, MODEM_DTR_PIN);
-    delay_ms(20);
+    m->fn_delay_ms(MODEM_DELAY_AFTER_DTR_CHANGE_MS);
   }
 }
 ///////////////////////////////////////////////////////
@@ -246,11 +260,18 @@ modem_init_GPIO_and_USART(void) {
 ///////////////////////////////////////////////////////
 
 modem_err_t
-modem_wait_for_pb_ready(modem_t *modem) {
-  int rr;
+modem_wait_for_pb_ready(modem_t *modem,
+                        uint32_t timeout_ms) {
   do {
-    rr = modem_read_at_str(modem, sizeof(modem->at_cmd_buff));
+    int rr = modem_read_at_str_timeout(modem,
+                                       sizeof(modem->at_cmd_buff),
+                                       timeout_ms);
     //todo handle rr. maybe handle some timeout.
   } while (strcmp(MODEM_PB_DONE_STR, modem->at_cmd_buff));
   return ME_SUCCESS;
+}
+
+modem_err_t
+modem_set_pwr(modem_t *modem, bool on) {
+  return ME_NOT_IMPLEMENTED;
 }

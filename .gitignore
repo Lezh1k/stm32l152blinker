@@ -1,3 +1,4 @@
 firmware/bin/*
+build/*
 *.pro.user
 firmware/build/*

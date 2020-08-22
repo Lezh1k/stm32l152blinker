@@ -23,7 +23,9 @@ static void led_blue_turn(bool on);
 static volatile bool m_need_to_send_data = false;
 static volatile int16_t m_test_time;
 
-static char modem_data_buff[1500];
+#define MODEM_DATA_BUFF_LEN 1500u
+static char m_modem_data_buff[MODEM_DATA_BUFF_LEN];
+
 static uint16_t prepare_modem_buff();
 static void send_test_data(const char* cmd_buff,
                            uint32_t chunks_count,
@@ -33,7 +35,7 @@ uint16_t
 prepare_modem_buff(){
   static char alphabet[] = "abcdefghijklmnopqrstuvwxyz";
   uint16_t count = 0;
-  for (size_t i = 0; i < sizeof(modem_data_buff) - 1; ++i) {
+  for (size_t i = 0; i < sizeof(m_modem_data_buff) - 1; ++i) {
 #define ETX 0x03
 #define ESC 0x1b
 #define CTRL_Z 0x1a
@@ -42,15 +44,15 @@ prepare_modem_buff(){
       case ETX:
       case ESC:
       case CTRL_Z:
-        modem_data_buff[count++] = ETX;
+        m_modem_data_buff[count++] = ETX;
       default:
-        modem_data_buff[count++] = ch;
+        m_modem_data_buff[count++] = ch;
     }
 #undef ETX
 #undef ESC
 #undef CTRL_Z
   }
-  modem_data_buff[sizeof(modem_data_buff) - 1] = 0;
+  m_modem_data_buff[sizeof(m_modem_data_buff) - 1] = 0;
   return count;
 }
 ///////////////////////////////////////////////////////
@@ -78,7 +80,7 @@ send_test_data(const char* cmd_buff,
     }
 
     //
-    modem_write_data(modem_data_buff, count);
+    modem_write_data(m_modem_data_buff, count);
     rr = modem_read_str(buff, sizeof(buff));
     mpr = modem_parse_cmd_answer(buff, "");
     if (mpr.code != ME_SUCCESS ||
@@ -93,10 +95,15 @@ send_test_data(const char* cmd_buff,
 }
 ///////////////////////////////////////////////////////
 
-int main(void) {  
+int main(void) {
+  modem_t *modem;
   SysTick_Config(SystemCoreClock / 1000); //1 ms tick. see commons.c
   LED_init();
   TIM2_init();
+
+  modem = modem_create_default(m_modem_data_buff,
+                               MODEM_DATA_BUFF_LEN);
+
 
   modem_sleep_mode(false);
   delay_ms(20);
@@ -275,7 +282,7 @@ int main(void) {
     }
 
     send_test_data(cmd_buff,
-                   30*1024 / sizeof(modem_data_buff),
+                   30*1024 / sizeof(m_modem_data_buff),
                    count);
     m_need_to_send_data = false;
 

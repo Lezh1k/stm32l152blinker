@@ -1,6 +1,10 @@
 #ifndef MODEM_H
 #define MODEM_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -15,7 +19,8 @@ typedef enum modem_err {
   ME_SUCCESS = 0,
   ME_CMD_ECHO_ERR,
   ME_UNEXPECTED_ANSWER,
-  ME_NOT_IMPLEMENTED
+  ME_TIMEOUT,
+  ME_NOT_IMPLEMENTED,
 } modem_err_t;
 
 typedef enum modem_state {
@@ -29,10 +34,12 @@ typedef struct modem_parse_cmd_res {
 
 typedef uint8_t (*pf_read_byte)(uint16_t);
 typedef void (*pf_write_byte)(char);
+typedef void (*pf_delay_ms)(uint32_t);
 
 typedef struct modem {
   pf_read_byte fn_read_byte;
   pf_write_byte fn_write_byte;
+  pf_delay_ms fn_delay_ms;
 
   uint16_t data_buff_len;
   char *data_buff; // max 1500 for real device
@@ -51,11 +58,13 @@ modem_t* modem_create(pf_read_byte fn_read_byte,
                       uint16_t data_buff_len);
 
 // well, here we just wait for "PB DONE" message from modem
-modem_err_t modem_wait_for_pb_ready(modem_t *modem);
+modem_err_t modem_wait_for_pb_ready(modem_t *modem, uint32_t timeout_ms);
 
 modem_err_t modem_cmd(modem_t *modem,
                       const char *cmd,
                       const char **expected_answers);
+
+modem_err_t modem_set_pwr(modem_t *modem, bool on);
 
 void modem_write_cmd(const char *cmd);
 void modem_write_data(const char *buff,
@@ -66,5 +75,7 @@ modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
 
 
 
-
+#ifdef __cplusplus
+}
+#endif // extern "C"
 #endif // MODEM_H
