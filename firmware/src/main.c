@@ -97,90 +97,19 @@ send_test_data(const char* cmd_buff,
 
 int main(void) {
   modem_t *modem;
+  modem_err_t modem_err;
   SysTick_Config(SystemCoreClock / 1000); //1 ms tick. see commons.c
   LED_init();
   TIM2_init();
 
-  modem = modem_create_default(m_modem_data_buff,
-                               MODEM_DATA_BUFF_LEN);
-
-
-  modem_sleep_mode(false);
-  delay_ms(20);
-  modem_init_USART();
-
-
-
-  led_blue_turn(true);
-  // init modem. set baud rate and CTS/RTS
-  // 1. Set CTS/RTS.
-  modem_write_cmd("AT+IFC=2,2\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+IFC=2,2\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
+  modem = modem_create_default();
+  modem_err = modem_prepare_to_work(modem);
+  if (modem_err != ME_SUCCESS) {
+    // todo implement error handling
+    // with leds.
   }
 
-  // 1.1 7 line uart mode
-  modem_write_cmd("AT+CSUART=0\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+CSUART=0\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
 
-  // 1.1.1
-  modem_write_cmd("AT+CSCLK=1\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+CSCLK=1\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  // 1.2 DTR pin enable
-  modem_write_cmd("AT&D1\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT&D1\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  // 2. Set modem baud/rate temporary
-  modem_write_cmd("AT+IPR=4000000\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+IPR=4000000\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  modem_USART_change_baud_rate(MODEM_BR_4000000);
-  led_blue_turn(false);
-
-  // 3. Check that we can communicate
-  for (;;) { //todo some counter.
-    modem_write_cmd("AT\r");
-    rr = modem_read_str_timeout(buff, sizeof(buff), 1000);
-    mpr = modem_parse_cmd_answer(buff, "AT\r");
-    if (mpr.code == ME_SUCCESS &&
-        strcmp(mpr.str_answer, MODEM_OK_STR) == 0) {
-      break;
-    }
-  }
   led_blue_turn(true);
 
   ///////////////////////////////////////////////////////

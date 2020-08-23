@@ -8,6 +8,9 @@
 #include "modem.h"
 #include "commons.h"
 
+#define MODEM_BR_4000000 4000000
+#define MODEM_BR_115200 115200
+
 #define MODEM_USART USART1
 #define MODEM_GPIO_AF_USART GPIO_AF_USART1
 
@@ -38,60 +41,181 @@
 #define MODEM_DTR_PIN GPIO_Pin_8
 #define MODEM_PWR_ON_PIN GPIO_Pin_7
 
+///////////////////////////////////////////////////////
+
+#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
+#define MODEM_OK_STR "\r\nOK\r\n"
+#define MODEM_ERROR_STR "\r\nERROR\r\n"
+
+typedef struct modem {
+  pf_read_byte fn_read_byte;
+  pf_write_byte fn_write_byte;
+
+  pf_delay_ms fn_delay_ms;
+  pf_get_current_ms fn_get_current_ms;
+
+  char at_cmd_buff[64];
+  // at+cipopen=10,"tcp","192.168.129.100",90901\r -> longest at sequence I guess.
+  //  uint8_t _padding[?]; maybe compiller is smart enough to add padding.
+  //  if not - now it's 80 bytes - aligned enough.
+} modem_t;
+
+// todo check if we need this
+typedef struct modem_parse_cmd_res {
+  modem_err_t code;
+  char *str_answer;
+} modem_parse_cmd_res_t;
+
+typedef struct modem_expected_answer {
+  const char *str;
+  uint32_t max_len;
+} modem_expected_answer_t;
+
+///////////////////////////////////////////////////////
+
 // private functions
-static void modem_write_byte(char b);
-static uint8_t modem_read_byte(uint16_t timeout_ms);
+static modem_err_t modem_write_byte(modem_t *m,
+                                    uint16_t timeout_ms,
+                                    char b);
+
+static modem_err_t modem_read_byte(modem_t *m,
+                                   uint16_t timeout_ms,
+                                   uint8_t *out_byte);
+
+static void modem_set_DTR(const modem_t *m,
+                          bool high);
 
 static void modem_init_GPIO_and_USART(void);
+
 static void modem_USART_change_baud_rate(uint32_t br);
 
-
-static void modem_set_DTR(const modem_t *m, bool high);
-
-
-static uint32_t modem_read_at_str_timeout(modem_t *m,
-                                          uint16_t max_len,
-                                          uint32_t timeout_ms);
+static modem_err_t modem_wait_for_pb_ready(modem_t *modem,
+                                           uint32_t timeout_ms);
 
 static uint32_t modem_read_at_str(modem_t *m,
-                                  uint16_t max_len);
+                                  uint16_t max_len,
+                                  uint32_t timeout_ms);
 
-// modem instance
-static modem_t m_instance;
+static uint32_t modem_read_at_str_infinity(modem_t *m,
+                                           uint16_t max_len);
+
+static modem_err_t modem_exec_at_cmd(modem_t *m,
+                                     modem_expected_answer_t *lst_expected_answers);
+
+///////////////////////////////////////////////////////
+///////////////////////////////////////////////////////
 
 modem_t*
-modem_create_default(char *data_buff,
-                     uint16_t data_buff_len) {
-  m_instance.data_buff = data_buff;
-  m_instance.data_buff_len = data_buff_len;
-  m_instance.fn_read_byte = modem_read_byte;
-  m_instance.fn_write_byte = modem_write_byte;
+modem_create_default(void) {
+  modem_t *res = modem_create(modem_read_byte,
+                              modem_write_byte,
+                              delay_ms,
+                              get_tick);
   modem_init_GPIO_and_USART();
-  return &m_instance;
+  return res;
 }
 ///////////////////////////////////////////////////////
 
 modem_t*
 modem_create(pf_read_byte fn_read_byte,
              pf_write_byte fn_write_byte,
-             char *data_buff,
-             uint16_t data_buff_len) {
-  m_instance.data_buff = data_buff;
-  m_instance.data_buff_len = data_buff_len;
+             pf_delay_ms fn_delay_ms,
+             pf_get_current_ms fn_get_current_ms) {
+  static modem_t m_instance;
   m_instance.fn_read_byte = fn_read_byte;
   m_instance.fn_write_byte = fn_write_byte;
+  m_instance.fn_delay_ms = fn_delay_ms;
+  m_instance.fn_get_current_ms = fn_get_current_ms;
   return &m_instance;
 }
 ///////////////////////////////////////////////////////
 
 modem_err_t
-modem_cmd(modem_t *modem,
-          const char *cmd,
-          const char **expected_answers) {
+modem_set_pwr(modem_t *modem,
+              bool on) {
+  UNUSED(modem); //WARNING!!! USE THIS!!!
+  if (on) {
+    GPIO_ResetBits(MODEM_USART_PORT, MODEM_PWR_ON_PIN);
+  } else {
+    GPIO_SetBits(MODEM_USART_PORT, MODEM_PWR_ON_PIN);
+  }
   return ME_NOT_IMPLEMENTED;
 }
 ///////////////////////////////////////////////////////
 
+modem_err_t
+modem_read_byte(modem_t *m,
+                uint16_t timeout_ms,
+                uint8_t *out_byte) {
+  if (timeout_ms == 0) { //wait infinity
+    while (!(MODEM_USART->SR & USART_SR_RXNE))
+      ;
+    *out_byte = (uint8_t) (MODEM_USART->DR & 0x00ff);
+    return ME_SUCCESS;
+  }
+
+  uint32_t start = m->fn_get_current_ms();
+  volatile bool is_time_out = false;
+  while (!(MODEM_USART->SR & USART_SR_RXNE) && !is_time_out) {
+    is_time_out = m->fn_get_current_ms() - start > timeout_ms;
+  }
+
+  if (is_time_out)
+    return ME_TIMEOUT;
+
+  *out_byte = (uint8_t) (MODEM_USART->DR & 0x00ff);
+  return ME_SUCCESS;
+}
+///////////////////////////////////////////////////////
+
+modem_err_t
+modem_write_byte(modem_t *m,
+                 uint16_t timeout_ms,
+                 char b) {
+  UNUSED(m);
+  UNUSED(timeout_ms); //todo USE THIS!!!!!!!
+  while(!(MODEM_USART->SR & USART_SR_TXE))
+    ;
+  MODEM_USART->DR = b;
+  return ME_SUCCESS;
+}
+///////////////////////////////////////////////////////
+
+//modem response has this format : <cr><lf>response<cr><lf>
+//but AT+CIPSEND has another response first: \r\n>\0
+//so when this command is in use - need to set buff_size=3
+uint32_t
+modem_read_at_str(modem_t *m,
+                  uint16_t max_len,
+                  uint32_t timeout_ms) {
+  char ch, *tb;
+  bool cr = false;
+  modem_err_t err;
+
+  tb = m->at_cmd_buff;
+  while (max_len--) {
+    err = m->fn_read_byte(m, timeout_ms, (uint8_t*) &ch);
+    if (err == ME_TIMEOUT)
+      continue; // WARNING! Maybe it's better to return timeout here or break
+    *tb++ = ch;
+
+    if (ch != '\n')
+      continue;
+    if (cr)
+      break;
+    cr = true;
+  }
+  *tb = 0; //*tb++
+  return (uint32_t)((ptrdiff_t)(tb-m->at_cmd_buff));
+}
+///////////////////////////////////////////////////////
+
+uint32_t
+modem_read_at_str_infinity(modem_t *m,
+                           uint16_t max_len) {
+  return modem_read_at_str(m, max_len, 0);
+}
+///////////////////////////////////////////////////////
 
 modem_parse_cmd_res_t
 modem_parse_cmd_answer(const char *buff,
@@ -106,90 +230,6 @@ modem_parse_cmd_answer(const char *buff,
   res.code = ME_SUCCESS;
   res.str_answer = (char*) buff; //cause we won't change anything.
   return res;
-}
-///////////////////////////////////////////////////////
-
-uint8_t
-modem_read_byte(uint16_t timeout_ms) {
-  if (timeout_ms == 0) { //wait infinity
-    while (!(MODEM_USART->SR & USART_SR_RXNE))
-      ;
-    return (uint8_t) (MODEM_USART->DR & 0x00ff);
-  }
-  uint32_t start = get_tick();
-  volatile bool is_time_out = false;
-
-  while (!(MODEM_USART->SR & USART_SR_RXNE) && !is_time_out) {
-    is_time_out = get_tick() - start > timeout_ms;
-  }
-  return is_time_out ? 0 : (uint8_t) (MODEM_USART->DR & 0x00ff);
-}
-///////////////////////////////////////////////////////
-
-//modem response has this format : <cr><lf>response<cr><lf>
-//but AT+CIPSEND has another response first: \r\n>\0
-//so when this command is in use - need to set buff_size=3
-uint32_t
-modem_read_at_str_timeout(modem_t *m,
-                          uint16_t max_len,
-                          uint32_t timeout_ms) {
-  char ch, *tb;
-  bool cr = false;
-
-  tb = m->at_cmd_buff;
-  while (max_len--) {
-    ch = m->fn_read_byte(timeout_ms);
-    if (!ch)
-      continue;
-    *tb++ = ch;
-    if (ch != '\n')
-      continue;
-    if (cr)
-      break;
-    cr = true;
-  }
-
-  *tb++ = 0;
-  return (uint32_t)((ptrdiff_t)(tb-m->at_cmd_buff));
-}
-///////////////////////////////////////////////////////
-
-uint32_t
-modem_read_at_str(modem_t *m, uint16_t max_len) {
-  return modem_read_at_str_timeout(m, max_len, 0);
-}
-///////////////////////////////////////////////////////
-
-void
-modem_write_byte(char b) {
-  while(!(MODEM_USART->SR & USART_SR_TXE))
-    ;
-  MODEM_USART->DR = b;
-}
-///////////////////////////////////////////////////////
-
-void
-modem_write_cmd(const char *cmd) {
-  for (; *cmd; ++cmd)
-    modem_write_byte(*cmd);
-}
-///////////////////////////////////////////////////////
-
-void
-modem_write_data(const char *buff,
-                 uint32_t size) {
-  while (size--)
-    modem_write_byte(*buff++);
-}
-///////////////////////////////////////////////////////
-
-void
-modem_set_pwr(bool on) {
-  if (on) {
-    GPIO_ResetBits(MODEM_USART_PORT, MODEM_PWR_ON_PIN);
-  } else {
-    GPIO_SetBits(MODEM_USART_PORT, MODEM_PWR_ON_PIN);
-  }
 }
 ///////////////////////////////////////////////////////
 
@@ -263,15 +303,94 @@ modem_err_t
 modem_wait_for_pb_ready(modem_t *modem,
                         uint32_t timeout_ms) {
   do {
-    int rr = modem_read_at_str_timeout(modem,
-                                       sizeof(modem->at_cmd_buff),
-                                       timeout_ms);
-    //todo handle rr. maybe handle some timeout.
+    int rr = modem_read_at_str(modem,
+                               sizeof(modem->at_cmd_buff),
+                               timeout_ms);
+    UNUSED(rr);
   } while (strcmp(MODEM_PB_DONE_STR, modem->at_cmd_buff));
   return ME_SUCCESS;
 }
+///////////////////////////////////////////////////////
+
+
+modem_err_t modem_exec_at_cmd(modem_t *m,
+                                     modem_expected_answer_t *lst_expected_answers) {
+
+}
 
 modem_err_t
-modem_set_pwr(modem_t *modem, bool on) {
-  return ME_NOT_IMPLEMENTED;
+modem_prepare_to_work(modem_t *m) {
+  modem_err_t err;
+  err = modem_wait_for_pb_ready(m, 10000);
+  if (err != ME_SUCCESS)
+    return err;
+
+  // refactoring!!!!
+  modem_write_cmd("AT+IFC=2,2\r");
+  rr = modem_read_str(buff, sizeof(buff));
+  mpr = modem_parse_cmd_answer(buff, "AT+IFC=2,2\r");
+  if (mpr.code != ME_SUCCESS) {
+    led_blue_turn(false);
+  }
+  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+    led_blue_turn(false);
+  }
+
+  // 1.1 7 line uart mode
+  modem_write_cmd("AT+CSUART=0\r");
+  rr = modem_read_str(buff, sizeof(buff));
+  mpr = modem_parse_cmd_answer(buff, "AT+CSUART=0\r");
+  if (mpr.code != ME_SUCCESS) {
+    led_blue_turn(false);
+  }
+  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+    led_blue_turn(false);
+  }
+
+  // 1.1.1
+  modem_write_cmd("AT+CSCLK=1\r");
+  rr = modem_read_str(buff, sizeof(buff));
+  mpr = modem_parse_cmd_answer(buff, "AT+CSCLK=1\r");
+  if (mpr.code != ME_SUCCESS) {
+    led_blue_turn(false);
+  }
+  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+    led_blue_turn(false);
+  }
+
+  // 1.2 DTR pin enable
+  modem_write_cmd("AT&D1\r");
+  rr = modem_read_str(buff, sizeof(buff));
+  mpr = modem_parse_cmd_answer(buff, "AT&D1\r");
+  if (mpr.code != ME_SUCCESS) {
+    led_blue_turn(false);
+  }
+  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+    led_blue_turn(false);
+  }
+
+  // 2. Set modem baud/rate temporary
+  modem_write_cmd("AT+IPR=4000000\r");
+  rr = modem_read_str(buff, sizeof(buff));
+  mpr = modem_parse_cmd_answer(buff, "AT+IPR=4000000\r");
+  if (mpr.code != ME_SUCCESS) {
+    led_blue_turn(false);
+  }
+  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+    led_blue_turn(false);
+  }
+
+  modem_USART_change_baud_rate(MODEM_BR_4000000);
+  led_blue_turn(false);
+
+  // 3. Check that we can communicate
+  for (;;) { //todo some counter and timeout
+    modem_write_cmd("AT\r");
+    rr = modem_read_str_timeout(buff, sizeof(buff), 1000);
+    mpr = modem_parse_cmd_answer(buff, "AT\r");
+    if (mpr.code == ME_SUCCESS &&
+        strcmp(mpr.str_answer, MODEM_OK_STR) == 0) {
+      break;
+    }
+  }
 }

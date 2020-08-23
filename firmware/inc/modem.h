@@ -8,13 +8,6 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
-#define MODEM_OK_STR "\r\nOK\r\n"
-#define MODEM_ERROR_STR "\r\nERROR\r\n"
-
-#define MODEM_BR_4000000 4000000
-#define MODEM_BR_115200 115200
-
 typedef enum modem_err {
   ME_SUCCESS = 0,
   ME_CMD_ECHO_ERR,
@@ -23,57 +16,32 @@ typedef enum modem_err {
   ME_NOT_IMPLEMENTED,
 } modem_err_t;
 
-typedef enum modem_state {
-  MS_NOT_INITIALIZED = 0,
-} modem_state_t;
 
-typedef struct modem_parse_cmd_res {
-  modem_err_t code;
-  char *str_answer;
-} modem_parse_cmd_res_t;
-
-typedef uint8_t (*pf_read_byte)(uint16_t);
-typedef void (*pf_write_byte)(char);
+typedef struct modem modem_t;
+// pf_read_byte(const modem_t *m, uint16_t timeout_ms, uint8_t *out_res);
+typedef modem_err_t (*pf_read_byte)(modem_t*, uint16_t, uint8_t*);
+// pf_write_byte(const modem_t *m, uint16_t timeout_ms, char byte);
+typedef modem_err_t (*pf_write_byte)(modem_t*, uint16_t, char);
 typedef void (*pf_delay_ms)(uint32_t);
+typedef uint32_t (*pf_get_current_ms)(void);
 
-typedef struct modem {
-  pf_read_byte fn_read_byte;
-  pf_write_byte fn_write_byte;
-  pf_delay_ms fn_delay_ms;
-
-  uint16_t data_buff_len;
-  char *data_buff; // max 1500 for real device
-
-  char at_cmd_buff[64];
-  //  char _padding[2]; maybe compiller is smart enough to add padding
-} modem_t;
-
-// data_buff_len should be less or equal to 1500 (because of MTU)
-modem_t* modem_create_default(char *data_buff,
-                              uint16_t data_buff_len);
-
+// this one is to create modem handler struct
+modem_t* modem_create_default(void);
 modem_t* modem_create(pf_read_byte fn_read_byte,
                       pf_write_byte fn_write_byte,
-                      char *data_buff,
-                      uint16_t data_buff_len);
+                      pf_delay_ms fn_delay_ms,
+                      pf_get_current_ms fn_get_current_ms);
 
-// well, here we just wait for "PB DONE" message from modem
-modem_err_t modem_wait_for_pb_ready(modem_t *modem, uint32_t timeout_ms);
+modem_err_t modem_set_pwr(modem_t *modem,
+                          bool on);
 
-modem_err_t modem_cmd(modem_t *modem,
-                      const char *cmd,
-                      const char **expected_answers);
-
-modem_err_t modem_set_pwr(modem_t *modem, bool on);
-
-void modem_write_cmd(const char *cmd);
-void modem_write_data(const char *buff,
-                      uint32_t size);
-
-modem_parse_cmd_res_t modem_parse_cmd_answer(const char *buff,
-                                             const char *cmd); //todo make private
-
-
+// this function will:
+// 1. Wait for "pb done" message
+// 2. Set RTS/CTS (AT+IFC=2,2\r)
+// 3. Set Usart 7 line mode (AT+CSUART=1\r)
+// 4. Set DTR pin functionality (AT&D1)
+// 5. Set baud rate temporarily to 4 000 000 baud (AT+IPR=4000000)
+modem_err_t modem_prepare_to_work(modem_t *m);
 
 #ifdef __cplusplus
 }
