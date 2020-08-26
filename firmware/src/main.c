@@ -108,8 +108,6 @@ int main(void) {
     // todo implement error handling
     // with leds.
   }
-
-
   led_blue_turn(true);
 
   ///////////////////////////////////////////////////////
