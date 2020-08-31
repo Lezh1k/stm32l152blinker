@@ -14,4 +14,5 @@ HEADERS += \
 SOURCES += \
         ../firmware/src/commons.c \
         main.cpp \
-        t_commons.cpp
+        t_commons.cpp \
+        t_modem.cpp

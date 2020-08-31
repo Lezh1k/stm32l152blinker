@@ -3,14 +3,15 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
+
 #include "stm32l1xx.h"
 #include "stm32l1xx_rcc.h"
 #include "stm32l1xx_gpio.h"
-#include "stm32l1xx_usart.h"
 #include "stm32l1xx_tim.h"
-#include "misc.h"
-#include "modem.h"
 #include "commons.h"
+
+#include "modem.h"
+#include "modem_socket.h"
 
 #define GPIO_BLUE_LED_PIN GPIO_Pin_6
 #define GPIO_GREEN_LED_PIN GPIO_Pin_7
@@ -95,6 +96,118 @@ send_test_data(const char* cmd_buff,
 }
 ///////////////////////////////////////////////////////
 
+static void
+speed_test(modem_t *modem) {
+  ms_error_t err;
+  modem_socket_t m_sock = ms_socket(modem);
+
+  do {
+  // todo CHECK THESE TIMEOUTS
+    err = ms_set_timeouts(&m_sock, 8000, 3000, 3000);
+    if (err != MSE_SUCCESS)
+      break;
+
+    err = ms_open(&m_sock);
+    if (err != MSE_SUCCESS)
+      break;
+
+    err = ms_connect_tcp(&m_sock, "212.42.115.163", 56645);
+    if (err != MSE_SUCCESS)
+      break;
+
+  } while (0);
+
+//  // 3. prepare send command
+//  uint16_t count = prepare_modem_buff();
+//  char cmd_buff[32] = {0};
+//  strcat(cmd_buff, "AT+CIPSEND=0,"); //interface number
+//  strcat(cmd_buff, u16_to_str(count)); //count of bytes to send
+//  strcat(cmd_buff, "\r");
+
+//  // 4. disable echo
+//  modem_write_cmd("ATE0\r");
+//  rr = modem_read_str(buff, sizeof(buff));
+//  mpr = modem_parse_cmd_answer(buff, "ATE0\r");
+//  if (mpr.code != ME_SUCCESS ||
+//      strcmp(mpr.str_answer, MODEM_OK_STR)) {
+//    led_blue_turn(false);
+//  }
+
+//  m_test_time = 60; // 60 sec
+//  TIM2_init();
+//  while (m_test_time > 0) {
+//    if (!m_need_to_send_data)
+//      continue;
+//    modem_sleep_mode(false);
+//    delay_ms(20);
+
+//    modem_write_cmd("AT+CIPOPEN=0,"); //open
+//    modem_write_cmd("\"TCP\","); //type of connection : TCP/UDP
+//    modem_write_cmd("\"212.42.115.163\","); //server.ip
+//    modem_write_cmd("9094"); //port
+//    modem_write_cmd("\r"); // end of cmd
+//    rr = modem_read_str(buff, sizeof(buff));
+//    mpr = modem_parse_cmd_answer(buff, "");
+//    if (mpr.code != ME_SUCCESS ||
+//        strcmp(MODEM_OK_STR, mpr.str_answer)) {
+//      led_blue_turn(false);
+//    }
+
+//    rr = modem_read_str(buff, sizeof(buff));
+//    mpr = modem_parse_cmd_answer(buff, "");
+//    if (mpr.code != ME_SUCCESS) {
+//      led_blue_turn(false);
+//    }
+//    if (strcmp("\r\n+CIPOPEN: 0,0\r\n", mpr.str_answer)) {
+//      led_blue_turn(false);
+//    }
+
+//    send_test_data(cmd_buff,
+//                   30*1024 / sizeof(m_modem_data_buff),
+//                   count);
+//    m_need_to_send_data = false;
+
+//    modem_write_cmd("AT+CIPCLOSE=0\r");
+//    rr = modem_read_str(buff, sizeof(buff));
+//    mpr = modem_parse_cmd_answer(buff, "");
+//    if (mpr.code != ME_SUCCESS ||
+//        strcmp(MODEM_OK_STR, mpr.str_answer)) {
+//      led_blue_turn(false);
+//    }
+
+//    modem_sleep_mode(true);
+//  }
+
+//  // turn on echo
+//  modem_write_cmd("ATE1\r");
+//  rr = modem_read_str(buff, sizeof(buff));
+//  mpr = modem_parse_cmd_answer(buff, "");
+//  if (mpr.code != ME_SUCCESS ||
+//      strcmp(MODEM_OK_STR, mpr.str_answer)) {
+//    led_blue_turn(false);
+//  }
+
+//  // close socket
+
+//  modem_write_cmd("AT+CIPCLOSE=0\r");
+//  rr = modem_read_str(buff, sizeof(buff));
+//  mpr = modem_parse_cmd_answer(buff, "AT+CIPCLOSE=0\r");
+//  if (mpr.code != ME_SUCCESS) {
+//    led_blue_turn(false);
+//  }
+//  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
+//    led_blue_turn(false);
+//  }
+
+  while(1) {
+    delay_ms(1000);
+    led_blue_turn(true);
+    delay_ms(1000);
+    led_blue_turn(false);
+  }
+}
+///////////////////////////////////////////////////////
+
 int main(void) {
   modem_t *modem;
   modem_err_t modem_err;
@@ -113,144 +226,7 @@ int main(void) {
   ///////////////////////////////////////////////////////
   // let's start test! :)
 
-  // 0. set timeouts
-  modem_write_cmd("AT+CIPTIMEOUT=10000,10000,10000\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+CIPTIMEOUT=10000,10000,10000\r");
-  if (mpr.code != ME_SUCCESS ||
-      strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
 
-  // 1. netopen - open socket
-  modem_write_cmd("AT+NETOPEN\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+NETOPEN\r");
-  if (mpr.code != ME_SUCCESS ||
-      strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != ME_SUCCESS ) {
-    led_blue_turn(false);
-  }
-  // todo get interface number! 0 here is interface number!!!!
-  if (strcmp("\r\n+NETOPEN: 0\r\n", mpr.str_answer)) {
-    led_blue_turn(false);
-  }
-
-  // 2. establish connection
-  modem_write_cmd("AT+CIPOPEN=0,"); //open
-  modem_write_cmd("\"TCP\","); //type of connection : TCP/UDP
-  modem_write_cmd("\"212.42.115.163\","); //server.ip
-  modem_write_cmd("9094"); //port
-  modem_write_cmd("\r"); // end of cmd
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+CIPOPEN=0,\"TCP\",\"212.42.115.163\",9094\r");
-  if (mpr.code != ME_SUCCESS ||
-      strcmp(MODEM_OK_STR, mpr.str_answer)) {
-    led_blue_turn(false);
-  }
-
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != ME_SUCCESS ) {
-    led_blue_turn(false);
-  }
-  if (strcmp("\r\n+CIPOPEN: 0,0\r\n", mpr.str_answer)) {
-    led_blue_turn(false);
-  }
-
-  // 3. prepare send command
-  uint16_t count = prepare_modem_buff();
-  char cmd_buff[32] = {0};
-  strcat(cmd_buff, "AT+CIPSEND=0,"); //interface number
-  strcat(cmd_buff, u16_to_str(count)); //count of bytes to send
-  strcat(cmd_buff, "\r");
-
-  // 4. disable echo
-  modem_write_cmd("ATE0\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "ATE0\r");
-  if (mpr.code != ME_SUCCESS ||
-      strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  m_test_time = 60; // 60 sec
-  TIM2_init();
-  while (m_test_time > 0) {
-    if (!m_need_to_send_data)
-      continue;
-    modem_sleep_mode(false);
-    delay_ms(20);
-
-    modem_write_cmd("AT+CIPOPEN=0,"); //open
-    modem_write_cmd("\"TCP\","); //type of connection : TCP/UDP
-    modem_write_cmd("\"212.42.115.163\","); //server.ip
-    modem_write_cmd("9094"); //port
-    modem_write_cmd("\r"); // end of cmd
-    rr = modem_read_str(buff, sizeof(buff));
-    mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != ME_SUCCESS ||
-        strcmp(MODEM_OK_STR, mpr.str_answer)) {
-      led_blue_turn(false);
-    }
-
-    rr = modem_read_str(buff, sizeof(buff));
-    mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != ME_SUCCESS) {
-      led_blue_turn(false);
-    }
-    if (strcmp("\r\n+CIPOPEN: 0,0\r\n", mpr.str_answer)) {
-      led_blue_turn(false);
-    }
-
-    send_test_data(cmd_buff,
-                   30*1024 / sizeof(m_modem_data_buff),
-                   count);
-    m_need_to_send_data = false;
-
-    modem_write_cmd("AT+CIPCLOSE=0\r");
-    rr = modem_read_str(buff, sizeof(buff));
-    mpr = modem_parse_cmd_answer(buff, "");
-    if (mpr.code != ME_SUCCESS ||
-        strcmp(MODEM_OK_STR, mpr.str_answer)) {
-      led_blue_turn(false);
-    }
-
-    modem_sleep_mode(true);
-  }
-
-  // turn on echo
-  modem_write_cmd("ATE1\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "");
-  if (mpr.code != ME_SUCCESS ||
-      strcmp(MODEM_OK_STR, mpr.str_answer)) {
-    led_blue_turn(false);
-  }
-
-  // close socket
-
-  modem_write_cmd("AT+CIPCLOSE=0\r");
-  rr = modem_read_str(buff, sizeof(buff));
-  mpr = modem_parse_cmd_answer(buff, "AT+CIPCLOSE=0\r");
-  if (mpr.code != ME_SUCCESS) {
-    led_blue_turn(false);
-  }
-  if (strcmp(mpr.str_answer, MODEM_OK_STR)) {
-    led_blue_turn(false);
-  }
-
-  while(1) {
-    delay_ms(1000);
-    led_blue_turn(true);
-    delay_ms(1000);
-    led_blue_turn(false);
-  }
   return 0;
 }
 ///////////////////////////////////////////////////////

@@ -37,7 +37,6 @@
 #define MODEM_USART_TX_PIN_SOURCE GPIO_PinSource9
 
 #define MODEM_DTR_CHANGE_WAIT_MS 20
-#define MODEM_TIMEOUT_MS_INFINITY 0xffff
 #define MODEM_AT_CMD_BUFF_LEN 64
 
 // TODO CHANGE THIS!
@@ -45,9 +44,6 @@
 #define MODEM_PWR_ON_PIN GPIO_Pin_7
 
 ///////////////////////////////////////////////////////
-
-#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
-#define MODEM_OK_STR "\r\nOK\r\n"
 
 typedef struct modem {
   pf_read_byte fn_read_byte;
@@ -64,14 +60,7 @@ typedef struct modem_parse_cmd_res {
   char *str_answer;
 } modem_parse_cmd_res_t;
 
-typedef struct modem_expected_answer {
-  const char *prefix; //do we really need this?
-  const char *str_exp_res;
-  uint16_t max_len;
-  // uint8_t _padding[2]; maybe compiller is smart enough to add padding.
-} modem_expected_answer_t;
-
-static modem_expected_answer_t
+modem_expected_answer_t
 modem_expected_answer(const char *prefix,
                       const char *str_exp_res,
                       uint16_t max_len) {
@@ -81,7 +70,6 @@ modem_expected_answer(const char *prefix,
   res.max_len = max_len;
   return res;
 }
-
 ///////////////////////////////////////////////////////
 
 // private functions
@@ -106,11 +94,6 @@ static modem_err_t modem_wait_for_pb_ready(modem_t *modem,
 static uint32_t modem_read_at_str(modem_t *m,
                                   uint16_t max_len,
                                   uint16_t timeout_ms);
-
-static modem_err_t modem_exec_at_cmd(modem_t *m,
-                                     const char *cmd,
-                                     uint16_t timeout_ms,
-                                     int exp_ans_count, ...);
 
 static modem_err_t modem_write_str(modem_t *m,
                                    const char *str,
@@ -268,6 +251,9 @@ modem_read_at_str(modem_t *m,
   bool cr = false;
   modem_err_t err;
 
+  if (max_len == MODEM_USE_MAX_AVAILABLE_AT_BUFF)
+    max_len = sizeof (m->at_cmd_buff);
+
   tb = m->at_cmd_buff;
   while (max_len--) {
     err = m->fn_read_byte(m, timeout_ms, (uint8_t*) &ch);
@@ -359,7 +345,16 @@ modem_exec_at_cmd(modem_t *m,
     if ((err = mpr.code) != ME_SUCCESS)
       break;
 
-    if (strcmp(mpr.str_answer, ea->str_exp_res)) {
+    const char *sa, *se;
+    sa = mpr.str_answer;
+    se = ea->str_exp_res;
+
+    for (; *sa && *se; ++sa, ++se) {
+      if (*sa == *se)
+        continue;
+      //todo check - as "\d+". not as just digit
+      if (*sa >= '0' && *sa <= '9' && *se == MODEM_MASK_ANY_DIGIT)
+        continue;
       err = ME_UNEXPECTED_ANSWER;
       break;
     }
@@ -376,6 +371,13 @@ modem_err_t
 modem_prepare_to_work(modem_t *m) {
   modem_err_t err;
   uint32_t start_ms;
+  const char* init_commands[] = {
+    "AT+IFC=2,2\r", //set CTS/RTS
+    "AT+CSUART=1\r", //set 7-line uart mode
+    "AT&D1\r", //set DTR mode
+    "AT+IPR=4000000\r", //set modem baud rate
+    NULL,
+  };
 
   modem_set_DTR(m, false);
   m->fn_delay_ms(MODEM_DTR_CHANGE_WAIT_MS);
@@ -384,44 +386,28 @@ modem_prepare_to_work(modem_t *m) {
   if (err != ME_SUCCESS)
     return err;
 
-  do {
-    // enable RTS/CTS
-    err = modem_exec_at_cmd(m, "AT+IFC=2,2\r", MODEM_TIMEOUT_MS_INFINITY,
-                            1, modem_expected_answer("AT+IFC=2,2\r", MODEM_OK_STR, sizeof (m->at_cmd_buff)));
+  for (const char **cmd = init_commands; *cmd; ++cmd) {
+    err = modem_exec_at_cmd(m, *cmd, MODEM_TIMEOUT_MS_INFINITY,
+                            1, modem_expected_answer(*cmd, MODEM_OK_STR, MODEM_USE_MAX_AVAILABLE_AT_BUFF));
     if (err != ME_SUCCESS)
+      return err;
+  }
+
+  modem_USART_change_baud_rate(MODEM_BR_4000000);
+  start_ms = m->fn_get_current_ms();
+  for (; m->fn_get_current_ms() - start_ms > 200; ) {
+    err = modem_exec_at_cmd(m, "AT\r", 20,
+                            1, modem_expected_answer("AT\r", MODEM_OK_STR, MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+    if (err == ME_SUCCESS)
       break;
+  } // for. we got "OK" from modem on 4000000 baud rate
 
-    // enable 7-line usart mode
-    err = modem_exec_at_cmd(m, "AT+CSUART=1\r", MODEM_TIMEOUT_MS_INFINITY,
-                            1, modem_expected_answer("AT+CSUART=1\r", MODEM_OK_STR, sizeof (m->at_cmd_buff)));
-
-    if (err != ME_SUCCESS)
-      break;
-
-    // set DTR pin mode (see specification)
-    err = modem_exec_at_cmd(m, "AT&D1\r", MODEM_TIMEOUT_MS_INFINITY,
-                            1, modem_expected_answer("AT&D1\r", MODEM_OK_STR, sizeof (m->at_cmd_buff)));
-
-    if (err != ME_SUCCESS)
-      break;
-
-    // set baud rate to 4 000 000
-    err = modem_exec_at_cmd(m, "AT+IPR=4000000\r", MODEM_TIMEOUT_MS_INFINITY,
-                            1, modem_expected_answer("AT+IPR=4000000\r", MODEM_OK_STR, sizeof (m->at_cmd_buff)));
-
-    if (err != ME_SUCCESS)
-      break;
-
-    modem_USART_change_baud_rate(MODEM_BR_4000000);
-
-    start_ms = m->fn_get_current_ms();
-    for (; m->fn_get_current_ms() - start_ms > 200; ) {
-      err = modem_exec_at_cmd(m, "AT\r", 20,
-                              1, modem_expected_answer("AT\r", MODEM_OK_STR, sizeof (m->at_cmd_buff)));
-      if (err == ME_SUCCESS)
-        break;
-    } // for. we could get "OK" from modem on 4000000 baud rate
-
-  } while (false);
   return err;
 }
+///////////////////////////////////////////////////////
+
+const char *
+modem_at_buff(const modem_t *m) {
+  return m->at_cmd_buff;
+}
+///////////////////////////////////////////////////////
