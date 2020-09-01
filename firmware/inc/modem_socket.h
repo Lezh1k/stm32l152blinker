@@ -19,10 +19,11 @@ typedef enum ms_error {
 
 typedef struct modem_socket {
   modem_t *modem;
-  uint16_t sock_num; // netopen result
   uint32_t netopen_timeout_ms;
   uint32_t cipopen_timeout_ms;
   uint32_t cipsend_timeout_ms;
+  uint16_t sock_num; // netopen result
+  uint8_t data_sending;
 } modem_socket_t ;
 
 modem_socket_t ms_socket(modem_t *m);
@@ -37,12 +38,17 @@ ms_error_t ms_connect_tcp(modem_socket_t *ms,
                           const char *ip,
                           uint16_t port);
 
-int32_t ms_send_byte(modem_socket_t *ms,
-                     uint8_t b);
-
-int32_t ms_recv(modem_socket_t *ms,
+int32_t ms_send(modem_socket_t *ms,
                 uint8_t *buff,
                 uint16_t buff_len);
+
+int32_t ms_recv(modem_socket_t *ms,
+                uint16_t timeout_ms,
+                uint8_t *buff,
+                uint16_t buff_len);
+
+ms_error_t ms_set_data_mode(modem_socket_t *ms);
+ms_error_t ms_set_cmd_mode(modem_socket_t *ms);
 
 ms_error_t ms_close(modem_socket_t *ms);
 

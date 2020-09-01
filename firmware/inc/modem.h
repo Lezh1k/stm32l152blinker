@@ -73,6 +73,11 @@ modem_err_t modem_exec_at_cmd(modem_t *m,
 
 const char *modem_at_buff(const modem_t *m);
 
+modem_err_t modem_recv(modem_t *m,
+                       uint16_t timeout_ms,
+                       char *buff,
+                       uint16_t buff_len);
+
 #ifdef __cplusplus
 }
 #endif // extern "C"

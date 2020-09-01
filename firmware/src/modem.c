@@ -349,15 +349,29 @@ modem_exec_at_cmd(modem_t *m,
     sa = mpr.str_answer;
     se = ea->str_exp_res;
 
-    for (; *sa && *se; ++sa, ++se) {
-      if (*sa == *se)
+    for (; *sa && *se; ) {
+      if (*sa == *se) {
+        ++sa; ++se;
         continue;
+      }
+
       //todo check - as "\d+". not as just digit
-      if (*sa >= '0' && *sa <= '9' && *se == MODEM_MASK_ANY_DIGIT)
+      if (*sa >= '0' && *sa <= '9' && *se == MODEM_MASK_ANY_DIGIT) {
+        ++sa; ++se;
         continue;
+      }
+
+      // if we received not digit, but we are still waiting
+      // for digit - just
+      if (*se == MODEM_MASK_ANY_DIGIT) {
+        ++se;
+        continue;
+      }
+
       err = ME_UNEXPECTED_ANSWER;
       break;
     }
+
     //great. we here if command passed without errors
     //and returned expected result
   }
@@ -409,5 +423,18 @@ modem_prepare_to_work(modem_t *m) {
 const char *
 modem_at_buff(const modem_t *m) {
   return m->at_cmd_buff;
+}
+///////////////////////////////////////////////////////
+
+modem_err_t
+modem_recv(modem_t *m,
+           uint16_t timeout_ms,
+           char *buff,
+           uint16_t buff_len) {
+  UNUSED(m);
+  UNUSED(timeout_ms);
+  UNUSED(buff);
+  UNUSED(buff_len);
+  return ME_NOT_IMPLEMENTED;
 }
 ///////////////////////////////////////////////////////
