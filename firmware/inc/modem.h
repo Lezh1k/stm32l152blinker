@@ -8,8 +8,6 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
-#define MODEM_OK_STR "\r\nOK\r\n"
 #define MODEM_TIMEOUT_MS_INFINITY 0xffff
 #define MODEM_USE_MAX_AVAILABLE_AT_BUFF 0
 
@@ -26,7 +24,7 @@ typedef enum modem_err {
 typedef struct modem modem_t;
 
 typedef struct modem_expected_answer {
-  const char *prefix; //do we really need this?
+  const char *prefix;
   const char *str_exp_res;
   uint16_t max_len;
   // uint8_t _padding[2]; maybe compiller is smart enough to add padding.
@@ -47,23 +45,23 @@ typedef modem_err_t (*pf_write_byte)(modem_t*, uint16_t, char);
 typedef void (*pf_delay_ms)(uint32_t);
 typedef uint32_t (*pf_get_current_ms)(void);
 
+#define MODEM_AT_CMD_BUFF_LEN 64
+typedef struct modem {
+  pf_read_byte fn_read_byte;
+  pf_write_byte fn_write_byte;
+
+  pf_delay_ms fn_delay_ms;
+  pf_get_current_ms fn_get_current_ms;
+
+  char at_cmd_buff[MODEM_AT_CMD_BUFF_LEN];
+} modem_t;
+
 // this one is to create modem handler struct
-modem_t* modem_create_default(void);
+
 modem_t* modem_create(pf_read_byte fn_read_byte,
                       pf_write_byte fn_write_byte,
                       pf_delay_ms fn_delay_ms,
                       pf_get_current_ms fn_get_current_ms);
-
-modem_err_t modem_set_pwr(modem_t *modem,
-                          bool on);
-
-// this function will:
-// 1. Wait for "pb done" message
-// 2. Set RTS/CTS (AT+IFC=2,2\r)
-// 3. Set Usart 7 line mode (AT+CSUART=1\r)
-// 4. Set DTR pin functionality (AT&D1)
-// 5. Set baud rate temporarily to 4 000 000 baud (AT+IPR=4000000)
-modem_err_t modem_prepare_to_work(modem_t *m);
 
 // ... -> modem_expected_answer_t*[]
 modem_err_t modem_exec_at_cmd(modem_t *m,
@@ -71,12 +69,11 @@ modem_err_t modem_exec_at_cmd(modem_t *m,
                               uint16_t timeout_ms,
                               int exp_ans_count, ...);
 
-const char *modem_at_buff(const modem_t *m);
+// used in HW. todo move to vptr
+uint32_t modem_read_at_str(modem_t *m,
+                           uint16_t max_len,
+                           uint16_t timeout_ms);
 
-modem_err_t modem_recv(modem_t *m,
-                       uint16_t timeout_ms,
-                       char *buff,
-                       uint16_t buff_len);
 
 #ifdef __cplusplus
 }

@@ -62,6 +62,7 @@ HEADERS += \
     StdPeriph_Driver/inc/stm32l1xx_wwdg.h \
     inc/commons.h \
     inc/modem.h \
+    inc/modem_hw.h \
     inc/modem_socket.h
 
 SOURCES += \
@@ -95,6 +96,7 @@ SOURCES += \
     src/commons.c \
     src/main.c \
     src/modem.c \
+    src/modem_hw.c \
     src/modem_socket.c \
     src/system_stm32l1xx.c
 
