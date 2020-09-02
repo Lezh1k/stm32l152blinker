@@ -53,32 +53,41 @@ modem_create(pf_read_byte fn_read_byte,
 //modem response has this format : <cr><lf>response<cr><lf>
 //but AT+CIPSEND has another response first: \r\n>\0
 //so when this command is in use - need to set buff_size=3
-uint32_t
+modem_err_t
 modem_read_at_str(modem_t *m,
                   uint16_t max_len,
-                  uint16_t timeout_ms) {
+                  uint16_t timeout_ms,
+                  uint32_t *read_n) {
   char ch, *tb;
   bool cr = false;
   modem_err_t err;
+  uint32_t start_ms = m->fn_get_current_ms();
+  uint32_t current_ms;
 
   if (max_len == MODEM_USE_MAX_AVAILABLE_AT_BUFF)
     max_len = sizeof (m->at_cmd_buff);
 
   tb = m->at_cmd_buff;
-  while (max_len--) {
-    err = m->fn_read_byte(m, timeout_ms, (uint8_t*) &ch);
-    if (err == ME_TIMEOUT)
-      continue; // WARNING! Maybe it's better to return timeout here or break
-    *tb++ = ch;
 
+  while (max_len &&
+         ((current_ms = m->fn_get_current_ms()) - start_ms) <= timeout_ms) {
+    err = m->fn_read_byte(m, 50, (uint8_t*) &ch);
+    if (err == ME_TIMEOUT)
+      continue;
+
+    --max_len;
+    *tb++ = ch;
     if (ch != '\n')
       continue;
+
     if (cr)
       break;
+
     cr = true;
   }
   *tb++ = 0;
-  return (uint32_t)((ptrdiff_t)(tb - m->at_cmd_buff));
+  *read_n = (uint32_t)((ptrdiff_t)(tb - m->at_cmd_buff));
+  return err;
 }
 ///////////////////////////////////////////////////////
 
@@ -87,10 +96,17 @@ modem_write_at_str(modem_t *m,
                    const char *str,
                    uint16_t timeout_ms) {
   modem_err_t err = ME_SUCCESS;
-  while (*str) {
-    err = m->fn_write_byte(m, timeout_ms, *str++);
+  uint32_t start_ms = m->fn_get_current_ms();
+  uint32_t current_ms;
+
+  while (*str &&
+         ((current_ms = m->fn_get_current_ms()) - start_ms) <= timeout_ms) {
+    err = m->fn_write_byte(m, timeout_ms, *str);
+    if (err == ME_TIMEOUT)
+      continue;
     if (err != ME_SUCCESS)
       break;
+    ++str;
   }
   return err;
 }
@@ -121,18 +137,21 @@ modem_exec_at_cmd(modem_t *m,
   modem_err_t err = ME_SUCCESS;
   modem_parse_cmd_res_t mpr;
   modem_expected_answer_t ea;
+  uint32_t read_n;
 
-  err = modem_write_at_str(m, cmd, 1000); //todo change this timeout to something else
+  err = modem_write_at_str(m, cmd, 1000);
   if (err != ME_SUCCESS)
     return err;
 
   va_start(va_lst, exp_ans_count);
-
   for (int i = 0; i < exp_ans_count; ++i) {
     ea = va_arg(va_lst, modem_expected_answer_t);
-    modem_read_at_str(m,
-                      ea.max_len,
-                      timeout_ms);
+    err = modem_read_at_str(m,
+                            ea.max_len,
+                            timeout_ms,
+                            &read_n);
+    if (err != ME_SUCCESS)
+      break;
 
     mpr = modem_parse_cmd_answer(m->at_cmd_buff,
                                  ea.prefix);

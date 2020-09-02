@@ -35,8 +35,8 @@ int main(void) {
   SysTick_Config(SystemCoreClock / 1000); //1 ms tick. see commons.c
   LED_init();
   m_modem = modem_create_default();
-  led_green_turn(true);
 
+  led_green_turn(true);
   m_err = modem_prepare_to_work(m_modem);
   if (m_err != ME_SUCCESS) {
     led_green_turn(false);
@@ -57,12 +57,12 @@ int main(void) {
     }
 
     // speed test
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 10; ++i) {
       ms_err = ms_tcp_connect(&m_sock, "212.42.115.163", 45223);
       if (ms_err != MSE_SUCCESS)
         break;
 
-      for (int j = 0; j < 2/*1024*/; ++j) {
+      for (int j = 0; j < 1024; ++j) {
         int sent = ms_send(&m_sock, (uint8_t*)"123456789012345678901234567890", 30);
         if (sent != 30) {
           ms_err = MSE_NETWORK_ERR_BASE;
@@ -78,9 +78,8 @@ int main(void) {
 
     if (ms_err != MSE_SUCCESS)
       break;
+
     ms_err = ms_net_close(&m_sock);
-    if (ms_err != MSE_SUCCESS)
-      break;
   } while (0);
 
   if (ms_err == MSE_SUCCESS)

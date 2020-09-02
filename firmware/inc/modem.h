@@ -70,9 +70,9 @@ modem_err_t modem_exec_at_cmd(modem_t *m,
                               int exp_ans_count, ...);
 
 // used in HW. todo move to vptr
-uint32_t modem_read_at_str(modem_t *m,
+modem_err_t modem_read_at_str(modem_t *m,
                            uint16_t max_len,
-                           uint16_t timeout_ms);
+                           uint16_t timeout_ms, uint32_t *read_n);
 
 
 #ifdef __cplusplus

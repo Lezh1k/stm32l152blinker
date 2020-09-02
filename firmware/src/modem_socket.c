@@ -55,7 +55,7 @@ ms_net_open(modem_socket_t *ms) {
   if (merr != ME_SUCCESS)
     return MSE_HARDWARE_ERR_BASE + merr;
 
-  merr = modem_exec_at_cmd(ms->modem, cmd, MODEM_TIMEOUT_MS_INFINITY,
+  merr = modem_exec_at_cmd(ms->modem, cmd, ms->netopen_timeout_ms,
                            2,
                            modem_expected_answer(cmd, modem_ok_str(), MODEM_USE_MAX_AVAILABLE_AT_BUFF),
                            modem_expected_answer(res_prefix, "--\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
@@ -96,11 +96,10 @@ ms_tcp_connect(modem_socket_t *ms,
   strcat(cmd, u16_to_str(port));
   strcat(cmd, "\r");
 
-  // here we can receive some error
-  // todo get this error from modem buff.
   merr = modem_exec_at_cmd(ms->modem, cmd, ms->cipopen_timeout_ms + 30,
                            1,
-                           modem_expected_answer("", "\r\nCONNECT: 4000000\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+                           modem_expected_answer(cmd, "\r\nCONNECT 4000000\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+
   if (merr != ME_SUCCESS)
     return MSE_HARDWARE_ERR_BASE + merr;
 
@@ -111,6 +110,7 @@ ms_tcp_connect(modem_socket_t *ms,
 ms_error_t
 ms_tcp_disconnect(modem_socket_t *ms) {
   char cmd[32] = {0};
+
   ms_error_t err = ms_set_cmd_mode(ms);
   if (err != MSE_SUCCESS)
     return err;
@@ -120,8 +120,10 @@ ms_tcp_disconnect(modem_socket_t *ms) {
   strcat(cmd, "\r");
 
   modem_err_t merr = modem_exec_at_cmd(ms->modem, cmd, 1000,
-                                       1,
-                                       modem_expected_answer(cmd, modem_ok_str(), MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+                                       3,
+                                       modem_expected_answer(cmd, modem_ok_str(), MODEM_USE_MAX_AVAILABLE_AT_BUFF),
+                                       modem_expected_answer("", "\r\nCLOSED\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF),
+                                       modem_expected_answer("", "\r\n+CIPCLOSE: --,--\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
   if (merr != ME_SUCCESS)
     return MSE_HARDWARE_ERR_BASE + merr;
   return MSE_SUCCESS;
@@ -133,7 +135,7 @@ ms_error_t ms_net_close(modem_socket_t *ms) {
       modem_exec_at_cmd(ms->modem, "AT+NETCLOSE\r", 1000,
                         2,
                         modem_expected_answer("AT+NETCLOSE\r", modem_ok_str(), MODEM_USE_MAX_AVAILABLE_AT_BUFF),
-                        modem_expected_answer("", "NETCLOSE: -\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+                        modem_expected_answer("", "\r\n+NETCLOSE: -\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
   if (merr != ME_SUCCESS)
     return MSE_HARDWARE_ERR_BASE + merr;
   //todo check errcode from netclose
@@ -172,7 +174,7 @@ ms_set_data_mode(modem_socket_t *ms) {
   modem_err_t merr =
       modem_exec_at_cmd(ms->modem, "ATO\r", 2000,
                         1,
-                        modem_expected_answer("ATO\r", "\r\nCONNECT: 4000000\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
+                        modem_expected_answer("ATO\r", "\r\nCONNECT 4000000\r\n", MODEM_USE_MAX_AVAILABLE_AT_BUFF));
   if (merr != ME_SUCCESS)
     return MSE_HARDWARE_ERR_BASE + merr;
   return MSE_SUCCESS;

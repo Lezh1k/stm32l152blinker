@@ -10,8 +10,6 @@
 #include "commons.h"
 #include "modem_hw.h"
 
-#define MODEM_PB_DONE_STR "\r\nPB DONE\r\n"
-
 #define MODEM_BR_4000000 4000000
 #define MODEM_BR_115200 115200
 
@@ -142,10 +140,12 @@ modem_err_t
 modem_hw_read_byte(modem_t *m,
                    uint16_t timeout_ms,
                    uint8_t *out_byte) {
-  uint32_t start = m->fn_get_current_ms();
+  uint32_t start_ms = m->fn_get_current_ms();
+  uint32_t current_ms;
   volatile bool is_time_out = false;
   while (!(MODEM_USART->SR & USART_SR_RXNE) && !is_time_out) {
-    is_time_out = m->fn_get_current_ms() - start > timeout_ms;
+    current_ms = m->fn_get_current_ms();
+    is_time_out = (current_ms - start_ms) > timeout_ms;
   }
 
   if (is_time_out)
@@ -160,10 +160,18 @@ modem_err_t
 modem_hw_write_byte(modem_t *m,
                     uint16_t timeout_ms,
                     char b) {
-  UNUSED(m);
-  UNUSED(timeout_ms); //todo USE THIS!!!!!!!
-  while(!(MODEM_USART->SR & USART_SR_TXE))
-    ;
+  uint32_t start_ms = m->fn_get_current_ms();
+  uint32_t current_ms;
+  volatile bool is_time_out = false;
+
+  while(!(MODEM_USART->SR & USART_SR_TXE) && !is_time_out) {
+    current_ms = m->fn_get_current_ms();
+    is_time_out = (current_ms - start_ms) > timeout_ms;
+  }
+
+  if (is_time_out)
+    return ME_TIMEOUT;
+
   MODEM_USART->DR = b;
   return ME_SUCCESS;
 }
@@ -175,8 +183,8 @@ modem_prepare_to_work(modem_t *m) {
   uint32_t start_ms;
   const char* init_commands[] = {
     "AT+IFC=2,2\r", //set CTS/RTS
-    "AT+CSUART=0\r", //set 7-line uart mode false
-    "AT&D1\r", //set DTR mode false
+//    "AT+CSUART=1\r", //set 7-line uart mode true
+//    "AT&D1\r", //set DTR mode false
     "AT+IPR=4000000\r", //set modem baud rate
     NULL,
   };
@@ -213,13 +221,18 @@ modem_prepare_to_work(modem_t *m) {
 modem_err_t
 modem_wait_for_pb_ready(modem_t *modem,
                         uint32_t timeout_ms) {
+  modem_err_t err;
   do {
-    int rr = modem_read_at_str(modem,
-                               sizeof(modem->at_cmd_buff),
-                               timeout_ms);
-    UNUSED(rr);
-  } while (strcmp(MODEM_PB_DONE_STR, modem->at_cmd_buff));
-  return ME_SUCCESS;
+    uint32_t read_n;
+    err = modem_read_at_str(modem,
+                            sizeof(modem->at_cmd_buff),
+                            timeout_ms,
+                            &read_n);
+    if (err == ME_TIMEOUT)
+      break;
+    UNUSED(read_n);
+  } while (strcmp("\r\nPB DONE\r\n", modem->at_cmd_buff));
+  return err;
 }
 ///////////////////////////////////////////////////////
 
