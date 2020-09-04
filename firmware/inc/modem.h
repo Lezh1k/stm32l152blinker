@@ -75,6 +75,10 @@ modem_err_t modem_read_at_str(modem_t *m,
                            uint16_t timeout_ms, uint32_t *read_n);
 
 
+#ifdef MODEM_SPEED_TEST
+void modem_speed_test(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif // extern "C"

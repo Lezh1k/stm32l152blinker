@@ -1,4 +1,4 @@
-TEMPLATE = app
+\TEMPLATE = app
 CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt
@@ -63,7 +63,8 @@ HEADERS += \
     inc/commons.h \
     inc/modem.h \
     inc/modem_hw.h \
-    inc/modem_socket.h
+    inc/modem_socket.h \
+    inc/i2c1.h
 
 SOURCES += \
     StdPeriph_Driver/src/misc.c \
@@ -98,5 +99,6 @@ SOURCES += \
     src/modem.c \
     src/modem_hw.c \
     src/modem_socket.c \
+    src/i2c1.c \
     src/system_stm32l1xx.c
 

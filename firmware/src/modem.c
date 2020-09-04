@@ -194,3 +194,65 @@ modem_exec_at_cmd(modem_t *m,
   return err;
 }
 ///////////////////////////////////////////////////////
+
+#ifdef MODEM_SPEED_TEST
+void
+modem_speed_test() {
+  modem_t *m_modem;
+  modem_err_t m_err;
+
+  modem_socket_t m_sock;
+  ms_error_t ms_err;
+
+  SysTick_Config(SystemCoreClock / 1000); //1 ms tick. see commons.c
+  LED_init();
+  m_modem = modem_create_default();
+
+  led_green_turn(true);
+  m_err = modem_prepare_to_work(m_modem);
+  if (m_err != ME_SUCCESS) {
+    led_green_turn(false);
+  }
+
+  m_sock = ms_socket(m_modem);
+  do {
+    ms_err = ms_set_timeouts(&m_sock, 8000, 3000, 3000);
+    if (ms_err != MSE_SUCCESS) {
+      led_green_turn(false);
+      break;
+    }
+
+    ms_err = ms_net_open(&m_sock);
+    if (ms_err != MSE_SUCCESS) {
+      led_green_turn(false);
+      break;
+    }
+
+    // speed test
+    for (int i = 0; i < 10; ++i) {
+      ms_err = ms_tcp_connect(&m_sock, "212.42.115.163", 45223);
+      if (ms_err != MSE_SUCCESS)
+        break;
+
+      for (int j = 0; j < 1024; ++j) {
+        int sent = ms_send(&m_sock, (uint8_t*)"123456789012345678901234567890", 30);
+        if (sent != 30) {
+          ms_err = MSE_NETWORK_ERR_BASE;
+          break;
+        }
+      }
+      if (ms_err != MSE_SUCCESS)
+        break;
+
+      ms_err = ms_tcp_disconnect(&m_sock);
+      delay_ms(2000);
+    }
+
+    if (ms_err != MSE_SUCCESS)
+      break;
+
+    ms_err = ms_net_close(&m_sock);
+  } while (0);
+
+}
+#endif
