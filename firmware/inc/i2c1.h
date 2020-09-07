@@ -17,11 +17,29 @@ void i2c1_interrupts(FunctionalState on);
 
 typedef void (*i2c1_pf_callback)(i2c1_finish_code);
 
-void i2c1_read_buff_async(uint8_t slaveAddr, uint8_t startReg, uint8_t *buff, uint8_t len, volatile int8_t *finishCode, i2c1_pf_callback cb);
-i2c1_finish_code i2c1_read_buff_sync(uint8_t slaveAddr, uint8_t startReg, uint8_t *buff, uint8_t len);
+void i2c1_read_buff_async(uint8_t slaveAddr,
+                          uint8_t startReg,
+                          uint8_t *buff,
+                          uint8_t len,
+                          volatile int8_t *finishCode,
+                          i2c1_pf_callback cb);
 
-void i2c1_write_buff_async(uint8_t slaveAddr, uint8_t startReg, uint8_t *buff, uint8_t len, volatile int8_t *finishCode, i2c1_pf_callback cb);
-i2c1_finish_code i2c1_write_buff_sync(uint8_t slaveAddr, uint8_t startReg, uint8_t *buff, uint8_t len);
+i2c1_finish_code i2c1_read_buff_sync(uint8_t slaveAddr,
+                                     uint8_t startReg,
+                                     uint8_t *buff,
+                                     uint8_t len);
+
+void i2c1_write_buff_async(uint8_t slaveAddr,
+                           uint8_t startReg,
+                           const uint8_t *buff,
+                           uint8_t len,
+                           volatile int8_t *finishCode,
+                           i2c1_pf_callback cb);
+
+i2c1_finish_code i2c1_write_buff_sync(uint8_t slaveAddr,
+                                      uint8_t startReg,
+                                      const uint8_t *buff,
+                                      uint8_t len);
 
 void i2c1_scan(void (*cb)(uint8_t, uint8_t));
 

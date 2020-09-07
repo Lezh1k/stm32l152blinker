@@ -1,22 +1,17 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
-#include <stddef.h>
-#include <stdlib.h>
 
-#include "stm32l1xx.h"
-#include "stm32l1xx_rcc.h"
-#include "stm32l1xx_gpio.h"
-#include "stm32l1xx_tim.h"
-#include "misc.h"
+#include <stm32l1xx.h>
+#include <stm32l1xx_rcc.h>
+#include <stm32l1xx_gpio.h>
+#include <stm32l1xx_tim.h>
+#include <misc.h>
 
 #include "commons.h"
-
 #include "modem.h"
 #include "modem_hw.h"
 #include "modem_socket.h"
-
-#include "i2c1.h"
+#include "camera.h"
 
 #define GPIO_LED_RED_PIN GPIO_Pin_6
 #define GPIO_LED_GREEN_PIN GPIO_Pin_7
@@ -27,32 +22,84 @@ static void LED_init(void);
 static void led_red_turn(bool on);
 static void led_green_turn(bool on);
 
-#define camera_i2c_write_addr 0x60
-#define camera_i2c_read_addr  0x61
-
-modem_t *debug_output;
-static void i2c_scan_cb(uint8_t h, uint8_t l) {
-  modem_hw_write_byte(debug_output,
-                      1000,
-                      h);
-  modem_hw_write_byte(debug_output,
-                      1000,
-                      l);
-}
-///////////////////////////////////////////////////////
-
 int main(void) {
+  modem_err_t m_err;
+  ms_error_t ms_err;
+  camera_err_t cam_err;
+
+  modem_t *m_modem;
+  modem_socket_t m_sock;
+
+  bool is_initialized = false;
+
+  delay_init();
   LED_init();
   TIM2_init();
 
-  debug_output = modem_create_default();
+  m_modem = modem_create_default();
 
-  i2c1_init();
+  do {
+    // init camera
+    cam_err = camera_init();
+    if (cam_err != CE_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+
+    // init modem
+    m_err = modem_prepare_to_work(m_modem);
+    if (m_err != ME_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+
+    m_sock = ms_socket(m_modem);
+    ms_err = ms_set_timeouts(&m_sock, 8000, 3000, 3000);
+    if (ms_err != MSE_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+
+    ms_err = ms_net_open(&m_sock);
+    if (ms_err != MSE_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+
+    is_initialized = true;
+  } while (0);
+
+  led_green_turn(true);
+
+  for (int i = 0; i < 5; ++i) {
+    ms_err = ms_tcp_connect(&m_sock, "212.42.115.163", 45223);
+    if (ms_err != MSE_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+
+    cam_err = camera_take_snapshot();
+    if (cam_err != CE_SUCCESS) {
+      led_red_turn(true);
+      goto cam_err;
+    }
+
+    cam_err = camera_burst_read_start();
+
+// without goto worse
+cam_err:
+    ms_err = ms_tcp_disconnect(&m_sock);
+    if (ms_err != MSE_SUCCESS) {
+      led_red_turn(true);
+      break;
+    }
+    delay_ms(2000);
+
+  }
+  ///////////////////////////////////////////////////////
+
   while (1) {
-    uint8_t buff[1];
-    i2c1_finish_code fc;
-    fc = i2c1_read_buff_sync(0x61, 0x0A, buff, 1);
-    fc = i2c1_read_buff_sync(0x61, 0x0B, buff, 1);
+
   }
 
   return 0;
@@ -93,11 +140,11 @@ LED_init(void) {
 ///////////////////////////////////////////////////////
 
 void TIM2_IRQHandler(void) {
-  static volatile bool on = true;
+//  static volatile bool on = true;
   if (TIM2->SR & TIM_IT_Update) {
     TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-    led_red_turn(on = !on);
-    led_green_turn(!on);
+//    led_red_turn(on = !on);
+//    led_green_turn(!on);
   }
 }
 ///////////////////////////////////////////////////////

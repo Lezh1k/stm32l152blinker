@@ -53,7 +53,7 @@ typedef struct rmb_context {
 //write multiple bytes context
 typedef struct wmb_context {
   I2C_TypeDef *i2c;
-  volatile uint8_t *src_buff;
+  volatile const uint8_t *src_buff;
   volatile int8_t *ptr_finish_code;
   i2c1_pf_callback fn_callback;
   volatile uint8_t write_len;
@@ -514,7 +514,7 @@ i2c1_read_buff_sync(uint8_t slaveAddr,
 // write multiple bytes
 static i2c_async_dfa_t wmb_dfa_create(uint8_t slaveAddr,
                               uint8_t startReg,
-                              volatile uint8_t *srcBuff,
+                              const volatile uint8_t *srcBuff,
                               uint8_t writeLen,
                               volatile int8_t *pErr,
                               i2c1_pf_callback cb);
@@ -660,7 +660,7 @@ wmb_dfa_err(i2c_async_dfa_state_t* st,
 i2c_async_dfa_t
 wmb_dfa_create(uint8_t slaveAddr,
                uint8_t startReg,
-               volatile uint8_t *srcBuff,
+               volatile const uint8_t *srcBuff,
                uint8_t writeLen,
                volatile int8_t *pErr,
                i2c1_pf_callback cb) {
@@ -702,7 +702,7 @@ wmb_dfa_create(uint8_t slaveAddr,
 void
 i2c1_write_buff_async(uint8_t slaveAddr,
                       uint8_t startReg,
-                      uint8_t *buff,
+                      const uint8_t *buff,
                       uint8_t len,
                       volatile int8_t *finishCode,
                       i2c1_pf_callback cb) {
@@ -715,7 +715,7 @@ i2c1_write_buff_async(uint8_t slaveAddr,
 i2c1_finish_code
 i2c1_write_buff_sync(uint8_t slaveAddr,
                      uint8_t startReg,
-                     uint8_t *buff,
+                     const uint8_t *buff,
                      uint8_t len) {
   volatile int8_t finishCode = FC_IN_PROGRESS;
   i2c1_write_buff_async(slaveAddr, startReg, buff, len, &finishCode, NULL);
