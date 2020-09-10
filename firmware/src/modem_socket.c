@@ -31,7 +31,7 @@ ms_set_timeouts(modem_socket_t *ms,
   strcat(cmd, u16_to_str(cipsend_timeout_ms));
   strcat(cmd, "\r");
 
-  modem_err_t merr = modem_exec_at_cmd(ms->modem, cmd, MODEM_TIMEOUT_MS_INFINITY,
+  modem_err_t merr = modem_exec_at_cmd(ms->modem, cmd, 5000,
                                        1,
                                        modem_expected_answer(cmd, modem_ok_str(), MODEM_USE_MAX_AVAILABLE_AT_BUFF));
   if (merr != ME_SUCCESS)

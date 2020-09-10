@@ -313,8 +313,8 @@ void
 rmb_send_addr_receiver(i2c_async_dfa_state_t *st,
                        i2c_async_dfa_t *dfa) {
   rmb_context_t *pctx = (rmb_context_t*)(st->arg);
-  I2C_Send7bitAddress(pctx->i2c, pctx->slave_addr, I2C_Direction_Receiver);
   dfa->cs = 4;
+  I2C_Send7bitAddress(pctx->i2c, pctx->slave_addr, I2C_Direction_Receiver);
 }
 ///////////////////////////////////////////////////////
 
@@ -328,12 +328,12 @@ rmb_read_byte_btf(i2c_async_dfa_state_t *st,
     return;
   }
 
+  dfa->cs = 5;
   I2C_AcknowledgeConfig(pctx->i2c, DISABLE); //Send NACK after last byte received
   *pctx->dst_buff++ = (uint8_t)pctx->i2c->DR; //read N-2
   I2C_GenerateSTOP(pctx->i2c, ENABLE); //generate stop after last byte received
   *pctx->dst_buff++ = (uint8_t)pctx->i2c->DR; //read N-1
   pctx->read_len -= 2;
-  dfa->cs = 5;
 }
 ///////////////////////////////////////////////////////
 
@@ -548,8 +548,8 @@ void
 wmb_send_addr(i2c_async_dfa_state_t *st,
               i2c_async_dfa_t *dfa) {
   wmb_context_t *pctx = (wmb_context_t*)(st->arg);
-  I2C_Send7bitAddress(pctx->i2c, pctx->slave_addr, I2C_Direction_Transmitter);
   dfa->cs = 2;
+  I2C_Send7bitAddress(pctx->i2c, pctx->slave_addr, I2C_Direction_Transmitter);
 }
 ///////////////////////////////////////////////////////
 
@@ -557,8 +557,8 @@ void
 wmb_send_start_reg(i2c_async_dfa_state_t *st,
                    i2c_async_dfa_t *dfa) {
   wmb_context_t *pctx = (wmb_context_t*)(st->arg);
-  I2C_SendData(pctx->i2c, pctx->dst_reg);
   dfa->cs = 3;
+  I2C_SendData(pctx->i2c, pctx->dst_reg);
 }
 ///////////////////////////////////////////////////////
 
@@ -566,13 +566,14 @@ void
 wmb_send_data(i2c_async_dfa_state_t *st,
               i2c_async_dfa_t *dfa) {
   wmb_context_t *pctx = (wmb_context_t*)(st->arg);
-  I2C_SendData(pctx->i2c, *pctx->src_buff++);
   if (pctx->write_len-- != 1) {
     dfa->cs = 3;
+    I2C_SendData(pctx->i2c, *pctx->src_buff++);
     return;
   }
-  I2C_GenerateSTOP(pctx->i2c, ENABLE);
   dfa->cs = 4;
+  I2C_SendData(pctx->i2c, *pctx->src_buff++);
+  I2C_GenerateSTOP(pctx->i2c, ENABLE);
 }
 ///////////////////////////////////////////////////////
 
@@ -582,7 +583,7 @@ wmb_finish(i2c_async_dfa_state_t* st,
   wmb_context_t *pctx = (wmb_context_t*)(st->arg);
   if (pctx->fn_callback != NULL)
     pctx->fn_callback(FC_FINISHED);
-  dfa->cs = DFA_INIT_STATE; //goto init state
+  dfa->cs = 5; //goto finish state
   *pctx->ptr_finish_code = FC_FINISHED;
 }
 ///////////////////////////////////////////////////////
@@ -679,6 +680,8 @@ wmb_dfa_create(uint8_t slaveAddr,
     {.actions = {wmb_dfa_err, dfa_nop, wmb_send_data, wmb_dfa_err, dfa_nop, wmb_i2c_err}}, //addr sent. wait for byte transmitted
     //4
     {.actions = {wmb_dfa_err, wmb_dfa_err, wmb_finish, wmb_dfa_err, dfa_nop, wmb_i2c_err}}, //clear flags after NACK and STOP conditions
+    //5
+    {.actions = {wmb_dfa_err, wmb_dfa_err, dfa_nop, wmb_dfa_err, dfa_nop, wmb_i2c_err}}, //transmission finished. but we receive BTF. just ignore
   };
 
   wmbCtx.i2c = I2C1;
