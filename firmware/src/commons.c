@@ -1,3 +1,4 @@
+#include <stm32l1xx_tim.h>
 #include "commons.h"
 
 char*
@@ -30,5 +31,11 @@ SysTick_Handler(void) {
 uint32_t
 get_tick() {
   return current_sys_tick;
+}
+///////////////////////////////////////////////////////
+
+void
+delay_init() {
+  SysTick_Config(SystemCoreClock / 1000); //1 ms tick
 }
 ///////////////////////////////////////////////////////

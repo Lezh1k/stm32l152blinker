@@ -1,4 +1,4 @@
-TEMPLATE = app
+\TEMPLATE = app
 CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt
@@ -60,10 +60,13 @@ HEADERS += \
     StdPeriph_Driver/inc/stm32l1xx_tim.h \
     StdPeriph_Driver/inc/stm32l1xx_usart.h \
     StdPeriph_Driver/inc/stm32l1xx_wwdg.h \
+    inc/camera.h \
+    inc/camera_regs.h \
     inc/commons.h \
     inc/modem.h \
     inc/modem_hw.h \
-    inc/modem_socket.h
+    inc/modem_socket.h \
+    inc/i2c1.h
 
 SOURCES += \
     StdPeriph_Driver/src/misc.c \
@@ -93,10 +96,12 @@ SOURCES += \
     StdPeriph_Driver/src/stm32l1xx_tim.c \
     StdPeriph_Driver/src/stm32l1xx_usart.c \
     StdPeriph_Driver/src/stm32l1xx_wwdg.c \
+    src/camera.c \
     src/commons.c \
     src/main.c \
     src/modem.c \
     src/modem_hw.c \
     src/modem_socket.c \
+    src/i2c1.c \
     src/system_stm32l1xx.c
 
