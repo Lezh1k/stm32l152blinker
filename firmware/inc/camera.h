@@ -12,6 +12,8 @@ typedef enum camera_err {
 } camera_err_t;
 
 camera_err_t camera_init(void);
+camera_err_t camera_reset(uint32_t timeout_ms);
+
 camera_err_t camera_snapshot_take(uint32_t timeout_ms);
 camera_err_t camera_snapshot_len(uint32_t *len);
 

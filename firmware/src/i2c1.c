@@ -16,7 +16,7 @@
 #define I2C1_SCL_PIN_SOURCE GPIO_PinSource6
 #define I2C1_SDA_PIN_SOURCE GPIO_PinSource7
 
-#define I2C_Speed           50000
+#define I2C_Speed           100000
 
 typedef enum {
   I2CEV_StartBitSent = 0, //SB

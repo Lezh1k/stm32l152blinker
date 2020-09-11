@@ -5,6 +5,8 @@
 #include <stm32l1xx_spi.h>
 #include <stm32l1xx_gpio.h>
 
+#include <misc.h>
+
 #include "i2c1.h"
 #include "camera.h"
 #include "camera_regs.h"
@@ -27,21 +29,22 @@
 #define CAMERA_SPI_SCK_SOURCE  GPIO_PinSource3
 
 typedef enum cam_i2c_reg {
-  ccreg_common7 = 0x12, //page1
-  ccreg_common10 = 0x15, //page1
-  ccreg_H_size = 0x51, 	//page0
-  ccreg_V_size = 0x52,	//page0
-  ccreg_page = 0xFF,
+  i2c_reg_common7 = 0x12, //page1
+  i2c_reg_common10 = 0x15, //page1
+  i2c_reg_H_size = 0x51, 	//page0
+  i2c_reg_V_size = 0x52,	//page0
+  i2c_reg_settings_page = 0xff,
 } cam_i2c_reg_t;
 
 typedef enum cam_spi_reg {
-  ardu_chip_test = 0x00,
-  ardu_chip_cap_ctr_reg = 0x01,
-  ardu_chip_fifo_addr = 0x04,
-  ardu_chip_trigger = 0x41,
-  fifo_size_1 = 0x42,
-  fifo_size_2 = 0x43,
-  fifo_size_3 = 0x44
+  spi_reg_test = 0x00,
+  spi_reg_cap_ctr_reg = 0x01,
+  spi_reg_fifo_addr = 0x04,
+  spi_reg_cpld_ctr = 0x07,
+  spi_reg_trigger = 0x41,
+  spi_reg_fifo_size_1 = 0x42,
+  spi_reg_fifo_size_2 = 0x43,
+  spi_reg_fifo_size_3 = 0x44
 } cam_spi_reg_t;
 
 //i2c commands
@@ -53,6 +56,8 @@ static camera_err_t cam_write_i2c_reg(camera_reg_t reg);
 static void spi_init(void);
 static void cam_spi_cs_high(void);
 static void cam_spi_cs_low(void);
+
+camera_err_t cam_spi_bus_test(uint32_t timeout_ms);
 
 static camera_err_t cam_spi_write_reg(uint8_t reg,
                                       uint8_t val);
@@ -71,7 +76,7 @@ static camera_err_t spi_read_write_byte(uint8_t w,
 static camera_err_t cam_fifo_flush(void);
 static camera_err_t cam_fifo_clear_write_done_flag(void);
 static camera_err_t cam_fifo_start_capture(void);
-static camera_err_t cam_fifo_reset_read_ptr(void);
+static camera_err_t cam_fifo_reset_read_ptr(void) __attribute__((unused));
 static camera_err_t cam_wait_for_capture_done(uint32_t timeout_ms);
 
 camera_err_t
@@ -101,18 +106,54 @@ camera_init(void) {
   if (err != CE_SUCCESS)
     return err;
 
-  err = cam_write_i2c_reg(camera_reg(ccreg_common10, 0x00));
+  err = cam_write_i2c_reg(camera_reg(i2c_reg_common10, 0x00));
   if (err != CE_SUCCESS)
     return err;
 
-  return cam_write_i2c_regs(OV2640_800x600_JPEG);
+  err = cam_write_i2c_regs(OV2640_800x600_JPEG);
+  if (err != CE_SUCCESS)
+    return err;
+
+  // end of i2c init. start spi init
+  return cam_spi_bus_test(1000);
+}
+///////////////////////////////////////////////////////
+
+camera_err_t
+camera_reset(uint32_t timeout_ms) {
+  camera_err_t err;
+  err = cam_set_settings_page(1);
+  if (err != CE_SUCCESS)
+    return err;
+  err = cam_spi_write_reg(i2c_reg_common7, 0x80);
+  if (err != CE_SUCCESS)
+    return err;
+  return cam_spi_bus_test(timeout_ms);
+}
+///////////////////////////////////////////////////////
+
+camera_err_t
+cam_spi_bus_test(uint32_t timeout_ms) {
+#define tst_val 0xce
+  uint8_t tst = 0;
+  volatile bool is_timeout = false;
+  uint32_t start_ms, curr_ms;
+  start_ms = curr_ms = get_tick();
+  while(tst != tst_val && !is_timeout) {
+    cam_spi_write_reg(spi_reg_test, tst_val);
+    cam_spi_read_reg(spi_reg_test, &tst);
+    curr_ms = get_tick();
+    is_timeout = curr_ms - start_ms > timeout_ms;
+  }
+  return is_timeout ? CE_SPI_TIMEOUT : CE_SUCCESS;
+#undef tst_val
 }
 ///////////////////////////////////////////////////////
 
 camera_err_t
 cam_set_settings_page(uint8_t page) {
   i2c1_finish_code fc = i2c1_write_buff_sync(CAMERA_I2C_W_ADDR,
-                                             ccreg_page,
+                                             i2c_reg_settings_page,
                                              &page, 1);
   return fc == FC_FINISHED ? CE_SUCCESS : CE_I2C_HW_ERROR + fc;
 }
@@ -143,6 +184,7 @@ void
 spi_init(void) {
   GPIO_InitTypeDef gpio_cfg;
   SPI_InitTypeDef spi_cfg;
+  NVIC_InitTypeDef nvic_cfg;
 
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
   RCC_AHBPeriphClockCmd(CAMERA_SPI_RCC_GPIO, ENABLE);
@@ -174,11 +216,34 @@ spi_init(void) {
   spi_cfg.SPI_DataSize = SPI_DataSize_8b;
   spi_cfg.SPI_FirstBit = SPI_FirstBit_MSB;
   spi_cfg.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
-  spi_cfg.SPI_CRCPolynomial = 7;
-  spi_cfg.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32; // 1Mhz. We can increase this!!!!!!!
-
+  spi_cfg.SPI_CRCPolynomial = 10;
+  //  spi_cfg.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8; USE THIS!!!
+  spi_cfg.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_64;
   SPI_Init(CAMERA_SPI, &spi_cfg);
+
+  nvic_cfg.NVIC_IRQChannel = SPI1_IRQn;
+  nvic_cfg.NVIC_IRQChannelCmd = ENABLE;
+  nvic_cfg.NVIC_IRQChannelSubPriority = 1;
+  nvic_cfg.NVIC_IRQChannelPreemptionPriority = 1;
+  NVIC_Init(&nvic_cfg);
   SPI_Cmd(CAMERA_SPI, ENABLE);
+
+  SPI_I2S_ITConfig(SPI1, SPI_IT_ERR, ENABLE);
+}
+///////////////////////////////////////////////////////
+
+void
+SPI1_IRQHandler(void) {
+  uint16_t SR = SPI1->SR;
+  if (SR & SPI_SR_OVR) {
+    SR = get_tick() + 11;
+  }
+  if (SR & SPI_SR_CRCERR) {
+    SR = get_tick() + 12;
+  }
+  if (SR & SPI_SR_UDR) {
+    SR = get_tick() + 14;
+  }
 }
 ///////////////////////////////////////////////////////
 
@@ -196,24 +261,29 @@ cam_spi_cs_low(void) {
 
 camera_err_t
 cam_fifo_flush(void) {
-  return cam_spi_write_reg(ardu_chip_fifo_addr, 0x01); // have no idea why
+  return cam_spi_write_reg(spi_reg_fifo_addr, 0x01);
 }
 
 camera_err_t
 cam_fifo_clear_write_done_flag(void) {
-  return cam_spi_write_reg(ardu_chip_fifo_addr, 0x01);
+  return cam_spi_write_reg(spi_reg_fifo_addr, 0x01);
 }
 ///////////////////////////////////////////////////////
 
 camera_err_t
 cam_fifo_start_capture(void) {
-  return cam_spi_write_reg(ardu_chip_fifo_addr, 0x02);
+  uint8_t tmp;
+  camera_err_t err = cam_spi_write_reg(spi_reg_fifo_addr, 0x02);
+  if (err != CE_SUCCESS)
+    return err;
+  err = cam_spi_read_reg(spi_reg_fifo_addr, &tmp);
+  return err;
 }
 ///////////////////////////////////////////////////////
 
 camera_err_t
 cam_fifo_reset_read_ptr(void) {
-  return cam_spi_write_reg(ardu_chip_fifo_addr, 0x04);
+  return cam_spi_write_reg(spi_reg_fifo_addr, 0x04);
 }
 ///////////////////////////////////////////////////////
 
@@ -224,12 +294,11 @@ cam_wait_for_capture_done(uint32_t timeout_ms) {
   uint32_t start_ms, curr_ms;
   uint8_t trig_reg;
   volatile bool is_timeout = false;
-
   start_ms = curr_ms = get_tick();
   do {
     curr_ms = get_tick();
     is_timeout = curr_ms - start_ms >= timeout_ms;
-    err = cam_spi_read_reg(ardu_chip_trigger, &trig_reg);
+    err = cam_spi_read_reg(spi_reg_trigger, &trig_reg);
     if (err != CE_SUCCESS)
       return err;
     if (trig_reg & cap_is_done_msk)
@@ -243,9 +312,7 @@ cam_wait_for_capture_done(uint32_t timeout_ms) {
 camera_err_t
 cam_spi_write_reg(uint8_t reg,
                   uint8_t val) {
-  uint8_t data[2];
-  data[0] = reg | 0x80;
-  data[1] = val;
+  uint8_t data[2] = {reg | 0x80, val};
   return cam_spi_read_write_data(data, data, sizeof(data));
 }
 ///////////////////////////////////////////////////////
@@ -254,11 +321,8 @@ camera_err_t
 cam_spi_read_reg(uint8_t reg,
                  uint8_t *ptr_val) {
   camera_err_t err;
-  uint8_t tx[2] = {0};
+  uint8_t tx[2] = {reg & 0x7f, 0};
   uint8_t rx[2] = {0};
-  tx[0] = reg & 0x7F;
-  tx[1] = 0;
-
   err = cam_spi_read_write_data(tx, rx, sizeof (tx));
   if (err != CE_SUCCESS)
     return err;
@@ -333,13 +397,13 @@ camera_snapshot_take(uint32_t timeout_ms) {
   err = cam_fifo_clear_write_done_flag();
   if (err != CE_SUCCESS)
     return err;
-  err = cam_spi_write_reg(ardu_chip_cap_ctr_reg, 0x00);
-  if (err != CE_SUCCESS)
-    return err;
   err = cam_fifo_start_capture();
   if (err != CE_SUCCESS)
     return err;
-  return cam_wait_for_capture_done(timeout_ms);
+  err = cam_wait_for_capture_done(timeout_ms);
+  if (err != CE_SUCCESS)
+    return err;
+  return cam_spi_write_reg(spi_reg_trigger, 0x01);
 }
 ///////////////////////////////////////////////////////
 
@@ -349,13 +413,13 @@ camera_snapshot_len(uint32_t *len) {
   uint8_t size1 = 0;
   uint8_t size2 = 0;
   uint8_t size3 = 0;
-  err = cam_spi_read_reg(fifo_size_1, &size1);
+  err = cam_spi_read_reg(spi_reg_fifo_size_1, &size1);
   if (err != CE_SUCCESS)
     return err;
-  err = cam_spi_read_reg(fifo_size_2, &size2);
+  err = cam_spi_read_reg(spi_reg_fifo_size_2, &size2);
   if (err != CE_SUCCESS)
     return err;
-  err = cam_spi_read_reg(fifo_size_3, &size3);
+  err = cam_spi_read_reg(spi_reg_fifo_size_3, &size3);
   if (err != CE_SUCCESS)
     return err;
   size3 &= 0x7f;

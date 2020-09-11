@@ -25,16 +25,18 @@ static void led_red_turn(bool on);
 static void led_green_turn(bool on);
 
 static void normal_mode(void) __attribute__((noreturn, unused));
-static void camera_test(void) __attribute__((noreturn, unused));
+static void camera_test_mode(void) __attribute__((noreturn, unused));
 
 int main(void) {
 //  normal_mode();
-  camera_test();
+  camera_test_mode();
 }
 ///////////////////////////////////////////////////////
 
 void
-camera_test(void) {
+camera_test_mode(void) {
+#define test_buff_len 20
+  uint8_t cam_data[test_buff_len] = {0};
   camera_err_t cam_err;
   uint32_t img_len;
   uint8_t tmp_byte;
@@ -77,12 +79,20 @@ camera_test(void) {
       goto lbl_cam_err;
     }
 
-    while (img_len--) {
-      cam_err = camera_burst_read_byte(&tmp_byte);
+//    while (img_len--) {
+//      cam_err = camera_burst_read_byte(&tmp_byte);
+//      if (cam_err != CE_SUCCESS)
+//        break;
+//      //print this byte
+//    }
+
+    for (int i = 0; i < test_buff_len; ++i) {
+      cam_err = camera_burst_read_byte(&cam_data[i]);
       if (cam_err != CE_SUCCESS)
         break;
-      //print this byte
     }
+
+    led_green_turn(true);
     // without goto worse, sorry.
 lbl_cam_err:
     camera_burst_read_finish();
